@@ -20,8 +20,10 @@ app.use(cors({
   origin: [
     "http://localhost:3000",
     "https://viralify.com.br",
+    "https://viralify.angralocal.online",
     "https://frontend-five-eta-63.vercel.app",
     /\.vercel\.app$/,
+    /\.angralocal\.online$/,
   ]
 }));
 app.use(express.json());
@@ -31,7 +33,13 @@ app.use("/products",  productRoutes);
 app.use("/videos",    videoRoutes);
 app.use("/analytics", analyticsRoutes);
 app.use("/webhooks",  webhookRoutes);
-app.use("/uploads",   express.static(path.join(__dirname, "../uploads")));
+
+// Servir uploads com CORS aberto para vídeos
+app.use("/uploads", (req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET");
+  next();
+}, express.static(path.join(__dirname, "../uploads")));
 
 app.get("/health", (_, res) => res.json({ status: "ok", version: "1.0.0" }));
 
