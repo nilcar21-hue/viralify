@@ -12,7 +12,14 @@ const webhookRoutes  = require("./routes/webhooks");
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(cors({ origin: ["http://localhost:3000", "https://viralify.com.br"] }));
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    "https://viralify.com.br",
+    "https://frontend-five-eta-63.vercel.app",
+    /\.vercel\.app$/,
+  ]
+}));
 app.use(express.json());
 
 // Rotas
