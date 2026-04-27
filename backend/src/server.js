@@ -45,6 +45,13 @@ app.get("/debug/env", (_, res) => {
   });
 });
 
+
+// Debug FFmpeg
+app.get('/debug/ffmpeg', (_, res) => {
+  const { spawnSync } = require('child_process');
+  const r = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' });
+  res.json({ ok: r.status === 0, version: r.stdout?.slice(0,100), error: r.stderr?.slice(0,200) });
+});
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`🚀 Viralify API rodando na porta ${PORT}`);
