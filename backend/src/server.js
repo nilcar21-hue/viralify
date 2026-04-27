@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const { spawnSync } = require("child_process");
+const fs = require("fs");
 const { PrismaClient } = require("@prisma/client");
 
 const authRoutes      = require("./routes/auth");
