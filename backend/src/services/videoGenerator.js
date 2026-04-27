@@ -5,11 +5,9 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
 const FFMPEG = process.env.FFMPEG_PATH || "ffmpeg";
-const VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ"; // Liam PT-BR
+const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "TX3LPaxmHKxFdv7VOQHJ";
 
-// Gera roteiro com IA
 async function gerarRoteiro(produto) {
   const prompt = `Você é um roteirista especialista em vídeos virais de afiliados para TikTok/YouTube Brasil.
 
@@ -20,7 +18,6 @@ Comissão: ${produto.commission}%
 
 REGRAS:
 - Começo chocante que PARA O DEDO de dar scroll (primeiros 3 segundos)
-- NUNCA mencione nomes de pessoas ou canais
 - Fala direta: "você", "a gente"
 - Frases curtas, máximo 12 palavras
 - Destaque o benefício, não o produto
@@ -44,16 +41,16 @@ HASHTAGS: #hashtag1 #hashtag2 #hashtag3 #hashtag4 #hashtag5`;
   return completion.choices[0].message.content;
 }
 
-// Gera áudio com ElevenLabs
 async function gerarAudio(texto, outputPath) {
   const textoLimpo = texto
-    .replace(/TITULO:.*\n/i, "")
-    .replace(/GANCHO:\s*/i, "")
-    .replace(/ROTEIRO:\s*/i, "")
-    .replace(/CTA:\s*/i, "")
-    .replace(/HASHTAGS:.*/i, "")
+    .replace(/TITULO:.*\n/gi, "")
+    .replace(/GANCHO:\s*/gi, "")
+    .replace(/ROTEIRO:\s*/gi, "")
+    .replace(/CTA:\s*/gi, "")
+    .replace(/HASHTAGS:.*/gi, "")
     .replace(/\n+/g, " ")
-    .trim();
+    .trim()
+    .slice(0, 2000);
 
   const response = await axios.post(
     `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`,
@@ -70,6 +67,7 @@ async function gerarAudio(texto, outputPath) {
         Accept: "audio/mpeg",
       },
       responseType: "arraybuffer",
+      timeout: 30000,
     }
   );
 
@@ -77,128 +75,59 @@ async function gerarAudio(texto, outputPath) {
   return outputPath;
 }
 
-// Gera vídeo cinematic com Canvas + FFmpeg
 async function gerarVideo(roteiro, audioPath, produto, outputPath) {
-  const { createCanvas, loadImage } = require("canvas");
-  const https = require("https");
-  const http = require("http");
+  const titulo = (roteiro.match(/TITULO:\s*(.+)/i)?.[1]?.trim() || produto.title).slice(0, 55);
+  const preco = `R$ ${produto.price.toFixed(2).replace(".", ",")}`;
 
-  const W = 1080, H = 1920;
-  const titulo = roteiro.match(/TITULO:\s*(.+)/i)?.[1]?.trim() || produto.title;
-  const hashtags = roteiro.match(/HASHTAGS:\s*(.+)/i)?.[1]?.trim() || "";
-
-  // Baixa thumbnail do produto
-  const imgPath = outputPath.replace(".mp4", "_thumb.jpg");
-  await new Promise((resolve) => {
-    const proto = produto.thumbnail?.startsWith("https") ? https : http;
-    const file = fs.createWriteStream(imgPath);
-    proto.get(produto.thumbnail || "", (res) => {
-      res.pipe(file);
-      file.on("finish", () => { file.close(); resolve(); });
-    }).on("error", () => resolve());
-  });
-
-  // Cria frame com produto
-  const canvas = createCanvas(W, H);
-  const ctx = canvas.getContext("2d");
-
-  // Fundo gradiente escuro
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, "#0a0a0a");
-  grad.addColorStop(1, "#1a0a2e");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-
-  // Tenta carregar imagem do produto
+  // Baixa thumbnail
+  const thumbPath = outputPath.replace(".mp4", "_thumb.jpg");
   try {
-    const img = await loadImage(imgPath);
-    // Imagem do produto centralizada no topo
-    const imgH = H * 0.5;
-    ctx.save();
-    ctx.globalAlpha = 0.3;
-    ctx.drawImage(img, 0, 0, W, imgH);
-    ctx.restore();
-
-    // Overlay gradiente sobre a imagem
-    const overlay = ctx.createLinearGradient(0, 0, 0, imgH);
-    overlay.addColorStop(0, "rgba(10,10,10,0.3)");
-    overlay.addColorStop(1, "rgba(10,10,10,0.95)");
-    ctx.fillStyle = overlay;
-    ctx.fillRect(0, 0, W, imgH);
-
-    // Imagem do produto em destaque (menor, centralizada)
-    const pw = 600, ph = 600;
-    const px = (W - pw) / 2, py = 100;
-    ctx.save();
-    ctx.shadowColor = "#FF0050";
-    ctx.shadowBlur = 30;
-    ctx.drawImage(img, px, py, pw, ph);
-    ctx.restore();
-  } catch {}
-
-  try { fs.unlinkSync(imgPath); } catch {}
-
-  // Badge OFERTA
-  ctx.fillStyle = "#FF0050";
-  ctx.beginPath();
-  ctx.roundRect(W/2 - 120, 730, 240, 60, 30);
-  ctx.fill();
-  ctx.fillStyle = "#fff";
-  ctx.font = "bold 32px Arial";
-  ctx.textAlign = "center";
-  ctx.fillText("🔥 OFERTA RELÂMPAGO", W/2, 770);
-
-  // Preço
-  ctx.fillStyle = "#00FF88";
-  ctx.font = "bold 90px Arial";
-  ctx.fillText(`R$ ${produto.price.toFixed(2).replace(".", ",")}`, W/2, 880);
-
-  // Título do produto
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 52px Arial";
-  const palavras = titulo.split(" ");
-  let linha = "", linhas = [], y = 980;
-  for (const p of palavras) {
-    const t = linha ? `${linha} ${p}` : p;
-    if (ctx.measureText(t).width > W - 120) { linhas.push(linha); linha = p; }
-    else linha = t;
+    const r = await axios.get(produto.thumbnail, { responseType: "arraybuffer", timeout: 10000 });
+    fs.writeFileSync(thumbPath, Buffer.from(r.data));
+  } catch {
+    // Cria imagem preta de fallback via FFmpeg
+    spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=c=black:s=1080x1920:d=1", "-frames:v", "1", thumbPath]);
   }
-  if (linha) linhas.push(linha);
-  linhas.slice(0, 3).forEach(l => { ctx.fillText(l, W/2, y); y += 65; });
 
-  // CTA
-  ctx.fillStyle = "#FF0050";
-  ctx.beginPath();
-  ctx.roundRect(80, H - 280, W - 160, 100, 20);
-  ctx.fill();
-  ctx.fillStyle = "#fff";
-  ctx.font = "bold 48px Arial";
-  ctx.fillText("👆 LINK NA BIO — COMPRAR AGORA", W/2, H - 218);
+  // Escapa texto para filtro FFmpeg drawtext
+  const esc = (s) => s.replace(/[\\:']/g, "\\$&").replace(/[^\x20-\x7E]/g, "");
+  const tituloEsc = esc(titulo);
+  const precoEsc = esc(preco);
+  const ctaEsc = esc("LINK NA BIO — COMPRAR AGORA");
 
-  // Hashtags
-  ctx.fillStyle = "rgba(255,255,255,0.5)";
-  ctx.font = "28px Arial";
-  ctx.fillText(hashtags.split(" ").slice(0, 5).join(" "), W/2, H - 120);
+  // Filtro FFmpeg puro: escala imagem + overlay de texto cinematic
+  const vf = [
+    // Escala e corta para 9:16
+    "scale=1080:1920:force_original_aspect_ratio=increase",
+    "crop=1080:1920",
+    // Escurece fundo
+    "colorchannelmixer=rr=0.3:gg=0.3:bb=0.4",
+    // Badge OFERTA
+    "drawbox=x=340:y=740:w=400:h=70:color=0xFF0050@0.9:t=fill",
+    `drawtext=text='OFERTA RELAMPAGO':x=(w-text_w)/2:y=785:fontsize=34:fontcolor=white:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:shadowx=2:shadowy=2`,
+    // Preço
+    `drawtext=text='${precoEsc}':x=(w-text_w)/2:y=870:fontsize=95:fontcolor=0x00FF88:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:shadowx=3:shadowy=3`,
+    // Título
+    `drawtext=text='${tituloEsc}':x=(w-text_w)/2:y=1000:fontsize=50:fontcolor=white:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:shadowx=2:shadowy=2`,
+    // CTA
+    "drawbox=x=80:y=1620:w=920:h=100:color=0xFF0050@0.95:t=fill",
+    `drawtext=text='${ctaEsc}':x=(w-text_w)/2:y=1680:fontsize=38:fontcolor=white:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf`,
+  ].join(",");
 
-  // Salva frame
-  const framePath = outputPath.replace(".mp4", "_frame.jpg");
-  fs.writeFileSync(framePath, canvas.toBuffer("image/jpeg", { quality: 90 }));
-
-  // Monta vídeo com FFmpeg
   const r = spawnSync(FFMPEG, [
     "-y",
-    "-loop", "1", "-i", framePath,
+    "-loop", "1", "-i", thumbPath,
     "-i", audioPath,
-    "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=24",
-    "-c:v", "libx264", "-preset", "fast", "-crf", "24",
+    "-vf", vf,
+    "-c:v", "libx264", "-preset", "fast", "-crf", "26",
     "-c:a", "aac", "-b:a", "128k",
     "-shortest", "-movflags", "+faststart",
     outputPath,
-  ], { encoding: "utf8", maxBuffer: 10 * 1024 * 1024, timeout: 120000 });
+  ], { encoding: "utf8", maxBuffer: 20 * 1024 * 1024, timeout: 180000 });
 
-  try { fs.unlinkSync(framePath); } catch {}
+  try { fs.unlinkSync(thumbPath); } catch {}
 
-  if (r.status !== 0) throw new Error("FFmpeg falhou: " + r.stderr?.slice(-300));
+  if (r.status !== 0) throw new Error("FFmpeg: " + (r.stderr || r.stdout || "").slice(-500));
   return outputPath;
 }
 
