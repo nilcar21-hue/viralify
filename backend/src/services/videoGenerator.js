@@ -71,6 +71,9 @@ async function gerarAudio(texto, outputPath) {
     }
   );
 
+  if (response.status !== 200 || !response.data || response.data.byteLength < 1000) {
+    throw new Error("ElevenLabs retornou resposta inválida — verifique a API key e permissões");
+  }
   fs.writeFileSync(outputPath, Buffer.from(response.data));
   return outputPath;
 }

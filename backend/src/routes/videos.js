@@ -102,7 +102,7 @@ router.post("/generate", authMiddleware, async (req, res) => {
       console.error("Erro ao gerar vídeo:", e.message);
       await prisma.video.update({
         where: { id: video.id },
-        data: { status: "FAILED" },
+        data: { status: "FAILED", title: "ERRO: " + e.message.slice(0, 200) },
       });
     }
   })();
