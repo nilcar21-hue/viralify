@@ -42,3 +42,12 @@ app.listen(PORT, () => {
 });
 
 module.exports = { app, prisma };
+
+// DEBUG TEMPORÁRIO — remover após resolver
+app.get("/debug/env", (_, res) => {
+  res.json({
+    ELEVENLABS_KEY_PREFIX: process.env.ELEVENLABS_API_KEY?.slice(0, 15),
+    GROQ_KEY_PREFIX: process.env.GROQ_API_KEY?.slice(0, 10),
+    NODE_ENV: process.env.NODE_ENV,
+  });
+});
