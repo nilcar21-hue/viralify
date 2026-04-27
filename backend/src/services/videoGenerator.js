@@ -130,23 +130,29 @@ async function gerarVideo(roteiro, audioPath, produto, outputPath) {
   const precoEsc = esc(preco);
   const ctaEsc = esc("LINK NA BIO — COMPRAR AGORA");
 
+  // Detectar fonte disponível no sistema
+  const fontes = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+  ];
+  let fontfile = "";
+  for (const f of fontes) {
+    try { if (fs.existsSync(f)) { fontfile = `:fontfile=${f}`; break; } } catch {}
+  }
+
   // Filtro FFmpeg puro: escala imagem + overlay de texto cinematic
   const vf = [
-    // Escala e corta para 9:16
     "scale=1080:1920:force_original_aspect_ratio=increase",
     "crop=1080:1920",
-    // Escurece fundo
     "colorchannelmixer=rr=0.3:gg=0.3:bb=0.4",
-    // Badge OFERTA
     "drawbox=x=340:y=740:w=400:h=70:color=0xFF0050@0.9:t=fill",
-    `drawtext=text='OFERTA RELAMPAGO':x=(w-text_w)/2:y=785:fontsize=34:fontcolor=white:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:shadowx=2:shadowy=2`,
-    // Preço
-    `drawtext=text='${precoEsc}':x=(w-text_w)/2:y=870:fontsize=95:fontcolor=0x00FF88:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:shadowx=3:shadowy=3`,
-    // Título
-    `drawtext=text='${tituloEsc}':x=(w-text_w)/2:y=1000:fontsize=50:fontcolor=white:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:shadowx=2:shadowy=2`,
-    // CTA
+    `drawtext=text='OFERTA':x=(w-text_w)/2:y=785:fontsize=40:fontcolor=white${fontfile}:shadowx=2:shadowy=2`,
+    `drawtext=text='${precoEsc}':x=(w-text_w)/2:y=870:fontsize=95:fontcolor=0x00FF88${fontfile}:shadowx=3:shadowy=3`,
+    `drawtext=text='${tituloEsc}':x=(w-text_w)/2:y=1000:fontsize=48:fontcolor=white${fontfile}:shadowx=2:shadowy=2`,
     "drawbox=x=80:y=1620:w=920:h=100:color=0xFF0050@0.95:t=fill",
-    `drawtext=text='${ctaEsc}':x=(w-text_w)/2:y=1680:fontsize=38:fontcolor=white:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf`,
+    `drawtext=text='LINK NA BIO':x=(w-text_w)/2:y=1680:fontsize=42:fontcolor=white${fontfile}`,
   ].join(",");
 
   const r = spawnSync(FFMPEG, [
