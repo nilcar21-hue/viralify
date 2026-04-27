@@ -26,13 +26,6 @@ router.post("/hotmart", async (req, res) => {
   try {
     const { event, data } = req.body;
 
-    // Hotmart envia o token no header para validação
-    const hotToken = req.headers["x-hotmart-hottok"] || req.headers["hottok"];
-    const expectedToken = process.env.HOTMART_WEBHOOK_TOKEN;
-    if (expectedToken && hotToken !== expectedToken) {
-      return res.status(401).json({ error: "Token inválido" });
-    }
-
     if (event === "PURCHASE_COMPLETE" || event === "PURCHASE_APPROVED") {
       const buyer = data?.buyer;
       const purchase = data?.purchase;
