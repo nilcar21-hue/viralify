@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Plan {
+  FREE
+  PRO
+  ULTRA
+}
+
+enum VideoStatus {
+  PENDING
+  GENERATING
+  READY
+  PUBLISHED
+  FAILED
+}
+
+model User {
+  id            String        @id @default(cuid())
+  email         String        @unique
+  name          String
+  password      String
+  plan          Plan          @default(FREE)
+  planExpiresAt DateTime?
+  mlToken       String?
+  ytToken       String?
+  ttToken       String?
+  videosCount   Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  videos        Video[]
+  metrics       Metric[]
+  savedProducts UserProduct[]
+}
+
+model Video {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  title       String
+  script      String      @db.Text
+  audioUrl    String?
+  videoUrl    String?
+  thumbnail   String?
+  status      VideoStatus @default(PENDING)
+  platforms   String[]
+  productId   String?
+  product     Product?    @relation(fields: [productId], references: [id])
+  publishedAt DateTime?
+  scheduledAt DateTime?
+  ytVideoId   String?
+  ttPublishId String?
+  createdAt   DateTime    @default(now())
+  metrics     Metric[]
+}
+
+model Product {
+  id           String        @id @default(cuid())
+  mlId         String        @unique
+  title        String
+  price        Float
+  commission   Float
+  affiliateUrl String
+  category     String
+  thumbnail    String
+  rating       Float         @default(0)
+  sold         Int           @default(0)
+  trending     Boolean       @default(false)
+  updatedAt    DateTime      @updatedAt
+  videos       Video[]
+  savedBy      UserProduct[]
+}
+
+model UserProduct {
+  id        String  @id @default(cuid())
+  userId    String
+  productId String
+  user      User    @relation(fields: [userId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@unique([userId, productId])
+}
+
+model Metric {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  videoId     String?
+  video       Video?   @relation(fields: [videoId], references: [id])
+  views       Int      @default(0)
+  clicks      Int      @default(0)
+  conversions Int      @default(0)
+  revenue     Float    @default(0)
+  platform    String?
+  date        DateTime @default(now())
+}

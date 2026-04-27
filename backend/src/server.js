@@ -1,0 +1,37 @@
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const { PrismaClient } = require("@prisma/client");
+
+const authRoutes     = require("./routes/auth");
+const productRoutes  = require("./routes/products");
+const videoRoutes    = require("./routes/videos");
+const analyticsRoutes = require("./routes/analytics");
+const webhookRoutes  = require("./routes/webhooks");
+
+const app = express();
+const prisma = new PrismaClient();
+
+app.use(cors({ origin: ["http://localhost:3000", "https://viralify.com.br"] }));
+app.use(express.json());
+
+// Rotas
+app.use("/auth",      authRoutes);
+app.use("/products",  productRoutes);
+app.use("/videos",    videoRoutes);
+app.use("/analytics", analyticsRoutes);
+app.use("/webhooks",  webhookRoutes);
+
+// Serve uploads
+const path = require("path");
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
+// Health check
+app.get("/health", (_, res) => res.json({ status: "ok", version: "1.0.0" }));
+
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => {
+  console.log(`🚀 Viralify API rodando na porta ${PORT}`);
+});
+
+module.exports = { app, prisma };

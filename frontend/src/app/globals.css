@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --pink: #FF0050;
+  --green: #00FF88;
+  --purple: #7C3AED;
+}
+
+body {
+  background: #030712;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #FF0050, #7C3AED);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.card-glow {
+  box-shadow: 0 0 30px rgba(124, 58, 237, 0.15);
+}
+
+.btn-primary {
+  @apply bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold py-3 px-6 rounded-xl transition-all duration-200 active:scale-95;
+}
+
+.btn-secondary {
+  @apply bg-gray-800 hover:bg-gray-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200;
+}
+
+.input {
+  @apply bg-gray-900 border border-gray-700 text-white rounded-xl px-4 py-3 w-full focus:outline-none focus:border-purple-500 transition-colors;
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-pulse-slow { animation: pulse-slow 2s infinite; }
