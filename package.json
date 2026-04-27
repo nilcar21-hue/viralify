@@ -1,0 +1,8 @@
+{
+  "name": "viralify",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "cd backend && npm install && npx prisma generate",
+    "start": "cd backend && npx prisma db push --accept-data-loss && node src/server.js"
+  }
+}
