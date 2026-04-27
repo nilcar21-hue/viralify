@@ -198,37 +198,15 @@ export default function LandingPage() {
           <p className="text-gray-400 text-lg">Do link do produto ao vídeo viral em menos de 60 segundos</p>
         </div>
 
-        <div className="relative rounded-3xl overflow-hidden border border-gray-800 bg-gray-900 aspect-video flex items-center justify-center group cursor-pointer"
-          onClick={() => setPlayingVideo(true)}>
-          {!playingVideo ? (
-            <>
-              <div className="absolute inset-0 bg-gradient-to-br from-purple-900/50 to-pink-900/50" />
-              <div className="relative z-10 text-center">
-                <div className="w-20 h-20 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                  <Play size={36} className="text-white ml-1" />
-                </div>
-                <p className="text-white font-bold text-xl">Ver demo — como a IA gera o vídeo</p>
-                <p className="text-gray-400 text-sm mt-2">Clique para assistir • 90 segundos</p>
-              </div>
-              <div className="absolute bottom-6 left-6 right-6 flex items-center gap-3 bg-black/60 backdrop-blur-sm rounded-2xl p-4">
-                <div className="w-10 h-10 rounded-xl bg-purple-600 flex items-center justify-center shrink-0">
-                  <Bot size={20} />
-                </div>
-                <div>
-                  <p className="font-bold text-sm">IA gerando vídeo para: "Fone Bluetooth JBL"</p>
-                  <p className="text-gray-400 text-xs">Roteiro → Narração → Vídeo → Pronto ✓</p>
-                </div>
-                <div className="ml-auto text-green-400 font-bold text-sm">58s</div>
-              </div>
-            </>
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
-              <div className="text-center">
-                <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                <p className="text-gray-400">Carregando demo...</p>
-              </div>
-            </div>
-          )}
+        <div className="relative rounded-3xl overflow-hidden border border-gray-800 bg-gray-900 aspect-video">
+          <video
+            controls
+            poster=""
+            className="w-full h-full object-cover"
+            preload="metadata"
+          >
+            <source src="https://viralify-production.up.railway.app/uploads/viralify-vsl.mp4" type="video/mp4" />
+          </video>
         </div>
 
         {/* Mini steps below video */}
