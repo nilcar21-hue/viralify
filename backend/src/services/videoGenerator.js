@@ -50,31 +50,33 @@ async function gerarAudio(texto, outputPath) {
     .replace(/HASHTAGS:.*/gi, "")
     .replace(/\n+/g, " ")
     .trim()
-    .slice(0, 2000);
+    .slice(0, 1500);
 
-  const response = await axios.post(
-    `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`,
-    {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) throw new Error("ELEVENLABS_API_KEY não definida");
+
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
+    method: "POST",
+    headers: {
+      "xi-api-key": apiKey,
+      "Content-Type": "application/json",
+      "Accept": "audio/mpeg",
+    },
+    body: JSON.stringify({
       text: textoLimpo,
       model_id: "eleven_turbo_v2_5",
       language_code: "pt",
       voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true },
-    },
-    {
-      headers: {
-        "xi-api-key": process.env.ELEVENLABS_API_KEY,
-        "Content-Type": "application/json",
-        Accept: "audio/mpeg",
-      },
-      responseType: "arraybuffer",
-      timeout: 30000,
-    }
-  );
+    }),
+  });
 
-  if (response.status !== 200 || !response.data || response.data.byteLength < 1000) {
-    throw new Error("ElevenLabs retornou resposta inválida — verifique a API key e permissões");
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`ElevenLabs ${res.status}: ${errText.slice(0, 200)}`);
   }
-  fs.writeFileSync(outputPath, Buffer.from(response.data));
+
+  const buffer = await res.arrayBuffer();
+  fs.writeFileSync(outputPath, Buffer.from(buffer));
   return outputPath;
 }
 
