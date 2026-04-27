@@ -10,6 +10,7 @@ const productRoutes   = require("./routes/products");
 const videoRoutes     = require("./routes/videos");
 const analyticsRoutes = require("./routes/analytics");
 const webhookRoutes   = require("./routes/webhooks");
+const { generateVSL } = require("./services/vslGenerator");
 
 const app = express();
 const prisma = new PrismaClient();
@@ -32,6 +33,27 @@ app.use("/webhooks",  webhookRoutes);
 app.use("/uploads",   express.static(path.join(__dirname, "../uploads")));
 
 app.get("/health", (_, res) => res.json({ status: "ok", version: "1.0.0" }));
+
+// GET /vsl — retorna VSL já gerada ou status
+app.get("/vsl", (_, res) => {
+  const vslPath = path.join(__dirname, "../uploads/viralify-vsl.mp4");
+  if (fs.existsSync(vslPath)) {
+    return res.json({ status: "ready", url: "/uploads/viralify-vsl.mp4" });
+  }
+  res.json({ status: "not_generated" });
+});
+
+// POST /vsl/generate — gera a VSL (protegido por token simples)
+app.post("/vsl/generate", async (req, res) => {
+  const token = req.headers["x-admin-token"];
+  if (token !== process.env.ADMIN_TOKEN && token !== "viralify_admin_2025") {
+    return res.status(401).json({ error: "Não autorizado" });
+  }
+  res.json({ status: "generating", message: "VSL sendo gerada em background — aguarde ~3 minutos" });
+  const outputDir = path.join(__dirname, "../uploads/vsl_tmp");
+  const outputPath = path.join(__dirname, "../uploads/viralify-vsl.mp4");
+  generateVSL(outputDir, outputPath).catch(e => console.error("VSL erro:", e.message));
+});
 
 app.get("/debug/env", (_, res) => res.json({
   ELEVENLABS: process.env.ELEVENLABS_API_KEY?.slice(0, 15) || "NAO_DEFINIDA",
