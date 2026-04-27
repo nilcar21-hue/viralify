@@ -417,9 +417,34 @@ export default function LandingPage() {
           ))}
         </div>
 
-        <p className="text-center text-gray-600 text-sm mt-8">
-          Pagamento processado com segurança pela Hotmart • Cancele quando quiser • Garantia de 30 dias
-        </p>
+        {/* Payment methods */}
+        <div className="mt-10 bg-gray-900 border border-gray-800 rounded-2xl p-6 max-w-xl mx-auto">
+          <p className="text-center text-gray-400 text-sm font-semibold mb-4 uppercase tracking-widest">Formas de pagamento aceitas</p>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="bg-gray-800 rounded-xl p-3 text-center">
+              <div className="text-2xl mb-1">💠</div>
+              <p className="text-xs font-bold text-blue-400">PIX</p>
+              <p className="text-xs text-gray-500">Aprovação imediata</p>
+            </div>
+            <div className="bg-gray-800 rounded-xl p-3 text-center">
+              <div className="text-2xl mb-1">💳</div>
+              <p className="text-xs font-bold text-white">Cartão</p>
+              <p className="text-xs text-gray-500">Até 12x sem juros</p>
+            </div>
+            <div className="bg-gray-800 rounded-xl p-3 text-center">
+              <div className="text-2xl mb-1">📄</div>
+              <p className="text-xs font-bold text-yellow-400">Boleto</p>
+              <p className="text-xs text-gray-500">Vence em 3 dias</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-center gap-4 text-xs text-gray-600">
+            <span className="flex items-center gap-1">🔒 Pagamento seguro</span>
+            <span>•</span>
+            <span>Processado pela Hotmart</span>
+            <span>•</span>
+            <span>Garantia 30 dias</span>
+          </div>
+        </div>
       </section>
 
       {/* Final CTA */}
