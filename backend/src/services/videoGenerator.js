@@ -52,31 +52,61 @@ async function gerarAudio(texto, outputPath) {
     .trim()
     .slice(0, 1500);
 
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) throw new Error("ELEVENLABS_API_KEY não definida");
-
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
-    method: "POST",
-    headers: {
-      "xi-api-key": apiKey,
-      "Content-Type": "application/json",
-      "Accept": "audio/mpeg",
-    },
-    body: JSON.stringify({
-      text: textoLimpo,
-      model_id: "eleven_turbo_v2_5",
-      language_code: "pt",
-      voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true },
-    }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`ElevenLabs ${res.status}: ${errText.slice(0, 200)}`);
+  // Tenta ElevenLabs primeiro, fallback para Google TTS
+  const elevenKey = process.env.ELEVENLABS_API_KEY;
+  if (elevenKey) {
+    try {
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
+        method: "POST",
+        headers: {
+          "xi-api-key": elevenKey,
+          "Content-Type": "application/json",
+          "Accept": "audio/mpeg",
+        },
+        body: JSON.stringify({
+          text: textoLimpo,
+          model_id: "eleven_turbo_v2_5",
+          language_code: "pt",
+          voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true },
+        }),
+      });
+      if (res.ok) {
+        const buffer = await res.arrayBuffer();
+        if (buffer.byteLength > 1000) {
+          fs.writeFileSync(outputPath, Buffer.from(buffer));
+          return outputPath;
+        }
+      }
+    } catch {}
   }
 
-  const buffer = await res.arrayBuffer();
-  fs.writeFileSync(outputPath, Buffer.from(buffer));
+  // Fallback: Google TTS (gratuito, sem restrição de IP)
+  const googleKey = process.env.GOOGLE_TTS_KEY;
+  if (googleKey) {
+    const res = await fetch(
+      `https://texttospeech.googleapis.com/v1/text:synthesize?key=${googleKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          input: { text: textoLimpo },
+          voice: { languageCode: "pt-BR", name: "pt-BR-Wavenet-B", ssmlGender: "MALE" },
+          audioConfig: { audioEncoding: "MP3", speakingRate: 1.1, pitch: 0 },
+        }),
+      }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      fs.writeFileSync(outputPath, Buffer.from(data.audioContent, "base64"));
+      return outputPath;
+    }
+  }
+
+  // Fallback final: FFmpeg gera silêncio de 30s (vídeo ainda fica com imagem)
+  spawnSync(FFMPEG, [
+    "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
+    "-t", "30", "-q:a", "9", "-acodec", "libmp3lame", outputPath,
+  ]);
   return outputPath;
 }
 
