@@ -1,13 +1,14 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const { PrismaClient } = require("@prisma/client");
 
-const authRoutes     = require("./routes/auth");
-const productRoutes  = require("./routes/products");
-const videoRoutes    = require("./routes/videos");
+const authRoutes      = require("./routes/auth");
+const productRoutes   = require("./routes/products");
+const videoRoutes     = require("./routes/videos");
 const analyticsRoutes = require("./routes/analytics");
-const webhookRoutes  = require("./routes/webhooks");
+const webhookRoutes   = require("./routes/webhooks");
 
 const app = express();
 const prisma = new PrismaClient();
@@ -30,11 +31,19 @@ app.use("/analytics", analyticsRoutes);
 app.use("/webhooks",  webhookRoutes);
 
 // Serve uploads
-const path = require("path");
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // Health check
 app.get("/health", (_, res) => res.json({ status: "ok", version: "1.0.0" }));
+
+// Debug temporário — verificar env vars no servidor
+app.get("/debug/env", (_, res) => {
+  res.json({
+    ELEVENLABS_KEY_PREFIX: process.env.ELEVENLABS_API_KEY?.slice(0, 15) || "NAO_DEFINIDA",
+    GROQ_KEY_PREFIX: process.env.GROQ_API_KEY?.slice(0, 10) || "NAO_DEFINIDA",
+    NODE_ENV: process.env.NODE_ENV,
+  });
+});
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
@@ -42,12 +51,3 @@ app.listen(PORT, () => {
 });
 
 module.exports = { app, prisma };
-
-// DEBUG TEMPORÁRIO — remover após resolver
-app.get("/debug/env", (_, res) => {
-  res.json({
-    ELEVENLABS_KEY_PREFIX: process.env.ELEVENLABS_API_KEY?.slice(0, 15),
-    GROQ_KEY_PREFIX: process.env.GROQ_API_KEY?.slice(0, 10),
-    NODE_ENV: process.env.NODE_ENV,
-  });
-});
