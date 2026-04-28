@@ -1,42 +1,165 @@
 const Groq = require("groq-sdk");
 const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { spawnSync, execFileSync } = require("child_process");
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const FFMPEG = process.env.FFMPEG_PATH || "ffmpeg";
 
-// Voz masculina jovem brasileira — Liam (multilingual v2 — melhor PT-BR)
 const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "TX3LPaxmHKxFdv7VOQHJ";
 
-// Imagens de fundo por categoria de produto
-const CATEGORY_IMAGES = {
-  MLB1499: [ // Eletrodomésticos
-    "https://images.pexels.com/photos/4397899/pexels-photo-4397899.jpeg",
-    "https://images.pexels.com/photos/4108715/pexels-photo-4108715.jpeg",
+const PEXELS_KEY = process.env.PEXELS_API_KEY || "";
+const PIXABAY_KEY = process.env.PIXABAY_API_KEY || "";
+
+// Termos de busca de vídeo por categoria — mistura PT + EN para mais resultados
+const CATEGORY_QUERIES = {
+  MLB1499: ["kitchen appliances", "home appliances modern", "washing machine", "blender cooking"],
+  MLB1051: ["smartphone modern", "mobile phone technology", "phone screen", "cellphone lifestyle"],
+  MLB1648: ["laptop computer", "computer setup gaming", "notebook desk", "technology office"],
+  MLB1144: ["sport fitness", "gym workout", "running athlete", "sports equipment"],
+  MLB1574: ["beauty cosmetics", "skincare routine", "makeup beauty", "perfume luxury"],
+  MLB1182: ["fashion clothes", "clothing store", "style outfit", "shoes fashion"],
+  MLB1000: ["ecommerce shopping", "online store", "product unboxing", "delivery package"],
+  DEFAULT: ["product showcase", "online shopping lifestyle", "ecommerce modern", "buy online success"],
+};
+
+// Fallback: vídeos Pexels hardcoded por categoria (IDs públicos verificados)
+const FALLBACK_VIDEOS = {
+  MLB1051: [
+    "https://www.pexels.com/video/person-using-a-smartphone-while-seated-5473954/",
+    "https://cdn.pixabay.com/video/2022/11/03/137016-768835451_tiny.mp4",
   ],
-  MLB1051: [ // Celulares
-    "https://images.pexels.com/photos/404280/pexels-photo-404280.jpeg",
-    "https://images.pexels.com/photos/1092644/pexels-photo-1092644.jpeg",
-  ],
-  MLB1648: [ // Computadores
-    "https://images.pexels.com/photos/1714208/pexels-photo-1714208.jpeg",
-    "https://images.pexels.com/photos/574071/pexels-photo-574071.jpeg",
-  ],
-  MLB1144: [ // Esporte
-    "https://images.pexels.com/photos/841130/pexels-photo-841130.jpeg",
-    "https://images.pexels.com/photos/4164512/pexels-photo-4164512.jpeg",
-  ],
-  MLB1574: [ // Beleza
-    "https://images.pexels.com/photos/3785147/pexels-photo-3785147.jpeg",
-    "https://images.pexels.com/photos/3373736/pexels-photo-3373736.jpeg",
+  MLB1648: [
+    "https://cdn.pixabay.com/video/2021/10/13/91836-634281615_tiny.mp4",
   ],
   DEFAULT: [
-    "https://images.pexels.com/photos/5632399/pexels-photo-5632399.jpeg",
-    "https://images.pexels.com/photos/4386431/pexels-photo-4386431.jpeg",
-    "https://images.pexels.com/photos/7567434/pexels-photo-7567434.jpeg",
+    "https://cdn.pixabay.com/video/2021/08/03/82788-581649651_tiny.mp4",
+    "https://cdn.pixabay.com/video/2020/07/28/45986-444960192_tiny.mp4",
   ],
 };
+
+async function buscarVideoPexels(query) {
+  if (!PEXELS_KEY) return null;
+  try {
+    const url = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&orientation=portrait&size=medium&per_page=5`;
+    const res = await fetch(url, { headers: { Authorization: PEXELS_KEY } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const videos = data.videos || [];
+    if (!videos.length) return null;
+    // Pega o primeiro com arquivo HD disponível
+    for (const v of videos) {
+      const file = v.video_files?.find(f => f.quality === "hd" || f.quality === "sd");
+      if (file?.link) return file.link;
+    }
+    return null;
+  } catch { return null; }
+}
+
+async function buscarVideoPixabay(query) {
+  if (!PIXABAY_KEY) return null;
+  try {
+    const url = `https://pixabay.com/api/videos/?key=${PIXABAY_KEY}&q=${encodeURIComponent(query)}&video_type=film&per_page=5`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const hits = data.hits || [];
+    if (!hits.length) return null;
+    const hit = hits[0];
+    return hit.videos?.medium?.url || hit.videos?.small?.url || null;
+  } catch { return null; }
+}
+
+// Pixabay CN — mesmo endpoint, retorna conteúdo de produtores asiáticos
+async function buscarVideoPixabayCN(query) {
+  if (!PIXABAY_KEY) return null;
+  try {
+    const queryCN = query + " china product";
+    const url = `https://pixabay.com/api/videos/?key=${PIXABAY_KEY}&q=${encodeURIComponent(queryCN)}&video_type=film&per_page=5&lang=zh`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const hits = data.hits || [];
+    if (!hits.length) return null;
+    return hits[0].videos?.medium?.url || hits[0].videos?.small?.url || null;
+  } catch { return null; }
+}
+
+// Coverr (licença comercial gratuita, sem chave)
+async function buscarVideoCoverr(query) {
+  try {
+    const url = `https://coverr.co/api/videos/search?query=${encodeURIComponent(query)}&per_page=3`;
+    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const items = data.hits || data.videos || [];
+    if (!items.length) return null;
+    return items[0].urls?.mp4_1080p || items[0].urls?.mp4_720p || null;
+  } catch { return null; }
+}
+
+async function baixarVideo(urlVideo, destPath) {
+  try {
+    const res = await fetch(urlVideo, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; Viralify/1.0)" },
+      redirect: "follow",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength < 10000) throw new Error("arquivo muito pequeno");
+    fs.writeFileSync(destPath, Buffer.from(buf));
+    return true;
+  } catch (e) {
+    console.error("baixarVideo falhou:", e.message);
+    return false;
+  }
+}
+
+async function obterVideosParaCategoria(categoria, tmpDir, prefix) {
+  const queries = CATEGORY_QUERIES[categoria] || CATEGORY_QUERIES.DEFAULT;
+  const videoPaths = [];
+
+  for (let i = 0; i < 2; i++) {
+    const query = queries[i] || queries[0];
+    const destPath = path.join(tmpDir, `${prefix}_clip${i}.mp4`);
+
+    // Tenta em ordem: Pexels → Pixabay → Pixabay CN → Coverr
+    let urlVideo = await buscarVideoPexels(query);
+    if (!urlVideo) urlVideo = await buscarVideoPixabay(query);
+    if (!urlVideo) urlVideo = await buscarVideoPixabayCN(query);
+    if (!urlVideo) urlVideo = await buscarVideoCoverr(query);
+
+    // Fallback hardcoded
+    if (!urlVideo) {
+      const fallbacks = FALLBACK_VIDEOS[categoria] || FALLBACK_VIDEOS.DEFAULT;
+      urlVideo = fallbacks[i] || fallbacks[0];
+    }
+
+    const ok = await baixarVideo(urlVideo, destPath);
+    if (ok) videoPaths.push(destPath);
+  }
+
+  return videoPaths;
+}
+
+// Prepara clip de vídeo: recorta para 1080x1920, normaliza duração
+function prepararClip(inputPath, outputPath, duracao, tmpDir) {
+  const r = spawnSync(FFMPEG, [
+    "-y", "-i", inputPath,
+    "-vf", [
+      "scale=1080:1920:force_original_aspect_ratio=increase",
+      "crop=1080:1920",
+      "setsar=1",
+    ].join(","),
+    "-t", String(duracao),
+    "-an",
+    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
+    "-r", "25",
+    outputPath,
+  ], { encoding: "utf8", maxBuffer: 100 * 1024 * 1024, timeout: 120000 });
+
+  return r.status === 0;
+}
 
 async function gerarRoteiro(produto) {
   const completion = await groq.chat.completions.create({
@@ -60,21 +183,6 @@ O roteiro deve soar natural como uma pessoa falando, não um robô. Use gírias 
     temperature: 0.9,
   });
   return completion.choices[0].message.content;
-}
-
-async function downloadImage(url, destPath) {
-  try {
-    const res = await fetch(url + "?auto=compress&cs=tinysrgb&w=1080&h=1920&fit=crop", {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; Viralify/1.0)" },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const buf = await res.arrayBuffer();
-    fs.writeFileSync(destPath, Buffer.from(buf));
-    return true;
-  } catch (e) {
-    console.error("downloadImage falhou:", e.message);
-    return false;
-  }
 }
 
 async function gerarAudio(texto, outputPath) {
@@ -114,8 +222,7 @@ async function gerarAudio(texto, outputPath) {
           return outputPath;
         }
       }
-      const errText = await res.text().catch(() => "");
-      console.error("ElevenLabs erro:", res.status, errText.slice(0, 200));
+      console.error("ElevenLabs erro:", res.status);
     } catch (e) {
       console.error("ElevenLabs exception:", e.message);
     }
@@ -158,24 +265,8 @@ async function gerarVideo(roteiro, audioPath, produto, outputPath) {
   const titulo = roteiro.match(/TITULO:\s*(.+)/i)?.[1]?.trim() || produto.title;
   const hashtags = roteiro.match(/HASHTAGS:\s*(.+)/i)?.[1]?.trim() || "#afiliados #mercadolivre";
 
-  // Escolhe imagens de fundo por categoria
-  const categoryImgs = CATEGORY_IMAGES[produto.category] || CATEGORY_IMAGES.DEFAULT;
   const tmpDir = path.dirname(outputPath);
-  const imgPaths = [];
-
-  // Baixa até 2 imagens de fundo
-  for (let i = 0; i < Math.min(2, categoryImgs.length); i++) {
-    const imgPath = path.join(tmpDir, `bg_${path.basename(outputPath, ".mp4")}_${i}.jpg`);
-    const ok = await downloadImage(categoryImgs[i], imgPath);
-    if (ok) imgPaths.push(imgPath);
-  }
-
-  // Tenta baixar thumbnail do produto
-  const thumbPath = path.join(tmpDir, `thumb_${path.basename(outputPath, ".mp4")}.jpg`);
-  let hasThumbnail = false;
-  if (produto.thumbnail && produto.thumbnail.startsWith("http")) {
-    hasThumbnail = await downloadImage(produto.thumbnail.split("?")[0] + "?auto=compress&w=400", thumbPath);
-  }
+  const prefix = path.basename(outputPath, ".mp4");
 
   // Pega duração do áudio
   const probe = spawnSync(FFMPEG, ["-i", audioPath, "-f", "null", "-"], {
@@ -186,53 +277,88 @@ async function gerarVideo(roteiro, audioPath, produto, outputPath) {
     ? parseInt(durMatch[1]) * 3600 + parseInt(durMatch[2]) * 60 + parseFloat(durMatch[3])
     : 35;
   const totalDur = Math.ceil(audioDur) + 1;
+  const half = Math.ceil(totalDur / 2);
 
-  // Monta o vídeo com imagens reais + texto sobreposto
+  // Baixa vídeos de fundo reais (Pexels + Pixabay + Pixabay CN + Coverr)
+  const rawVideos = await obterVideosParaCategoria(produto.category, tmpDir, prefix);
+
+  // Prepara clips (recorta para 1080x1920, duração certa)
+  const clipPaths = [];
+  const duracoes = [half, totalDur - half];
+  for (let i = 0; i < rawVideos.length; i++) {
+    const clipPath = path.join(tmpDir, `${prefix}_prepared${i}.mp4`);
+    const ok = prepararClip(rawVideos[i], clipPath, duracoes[i] || half, tmpDir);
+    if (ok) clipPaths.push(clipPath);
+    try { fs.unlinkSync(rawVideos[i]); } catch {}
+  }
+
+  const tituloSafe = titulo.replace(/'/g, "\\'").replace(/:/g, "\\:").replace(/\[/g, "\\[").replace(/\]/g, "\\]").slice(0, 45);
+  const precoSafe = `R$ ${produto.price}`;
+  const hashSafe = hashtags.replace(/'/g, "\\'").replace(/:/g, "\\:").slice(0, 50);
+
   let ffmpegArgs;
 
-  if (imgPaths.length >= 2) {
-    // 2 imagens: cada uma dura metade do vídeo com Ken Burns
-    const half = Math.ceil(totalDur / 2);
-    const tituloSafe = titulo.replace(/'/g, "\\'").replace(/:/g, "\\:").slice(0, 45);
-    const precoSafe = `R$ ${produto.price}`;
-    const hashSafe = hashtags.replace(/'/g, "\\'").replace(/:/g, "\\:").slice(0, 50);
-
+  if (clipPaths.length >= 2) {
+    // 2 vídeos reais concatenados com overlay de texto
     ffmpegArgs = [
       "-y",
-      "-loop", "1", "-t", String(half), "-i", imgPaths[0],
-      "-loop", "1", "-t", String(totalDur - half), "-i", imgPaths[1],
+      "-i", clipPaths[0],
+      "-i", clipPaths[1],
       "-i", audioPath,
       "-filter_complex", [
-        // Escala e faz zoom Ken Burns em cada imagem
-        `[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.001,1.1)':d=${half*25}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=25[v0]`,
-        `[1:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.001,1.1)':d=${(totalDur-half)*25}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=25[v1]`,
-        // Concatena os dois clips
-        `[v0][v1]concat=n=2:v=1:a=0[vbase]`,
+        // Concatena os 2 clips de vídeo
+        `[0:v][1:v]concat=n=2:v=1:a=0[vbase]`,
         // Overlay escuro para legibilidade
-        `[vbase]colorchannelmixer=rr=0.4:gg=0.4:bb=0.4[vdark]`,
-        // Gradiente no topo e fundo
-        `[vdark]drawbox=x=0:y=0:w=1080:h=300:color=black@0.7:t=fill[vtop]`,
-        `[vtop]drawbox=x=0:y=1620:w=1080:h=300:color=black@0.7:t=fill[vbox]`,
-        // Textos
-        `[vbox]drawtext=text='VIRALIFY':fontsize=52:fontcolor=0xc084fc:x=(w-text_w)/2:y=40:font=DejaVu Sans[vt1]`,
-        `[vt1]drawtext=text='${tituloSafe}':fontsize=58:fontcolor=white:x=(w-text_w)/2:y=140:font=DejaVu Sans[vt2]`,
-        `[vt2]drawtext=text='${precoSafe}':fontsize=72:fontcolor=0x4ade80:x=(w-text_w)/2:y=1660:font=DejaVu Sans[vt3]`,
-        `[vt3]drawtext=text='Link na bio - Comissao ${produto.commission}porcento':fontsize=44:fontcolor=0xfbbf24:x=(w-text_w)/2:y=1760:font=DejaVu Sans[vt4]`,
-        `[vt4]drawtext=text='${hashSafe}':fontsize=36:fontcolor=0x93c5fd:x=(w-text_w)/2:y=1850:font=DejaVu Sans[vfinal]`,
+        `[vbase]colorchannelmixer=rr=0.5:gg=0.5:bb=0.5[vdark]`,
+        // Gradiente no topo e rodapé
+        `[vdark]drawbox=x=0:y=0:w=1080:h=320:color=black@0.75:t=fill[vtop]`,
+        `[vtop]drawbox=x=0:y=1600:w=1080:h=320:color=black@0.75:t=fill[vbox]`,
+        // Logo Viralify
+        `[vbox]drawtext=text='VIRALIFY':fontsize=54:fontcolor=0xc084fc:x=(w-text_w)/2:y=38:font=DejaVu Sans:shadowcolor=black@0.8:shadowx=2:shadowy=2[vt1]`,
+        // Título do produto
+        `[vt1]drawtext=text='${tituloSafe}':fontsize=52:fontcolor=white:x=(w-text_w)/2:y=120:font=DejaVu Sans:shadowcolor=black@0.9:shadowx=2:shadowy=2[vt2]`,
+        // Preço em destaque
+        `[vt2]drawtext=text='${precoSafe}':fontsize=80:fontcolor=0x4ade80:x=(w-text_w)/2:y=1620:font=DejaVu Sans:shadowcolor=black@0.9:shadowx=3:shadowy=3[vt3]`,
+        // Comissão
+        `[vt3]drawtext=text='Comissao ${produto.commission}porcento para voce':fontsize=42:fontcolor=0xfbbf24:x=(w-text_w)/2:y=1730:font=DejaVu Sans:shadowcolor=black@0.8:shadowx=2:shadowy=2[vt4]`,
+        // Hashtags
+        `[vt4]drawtext=text='${hashSafe}':fontsize=34:fontcolor=0x93c5fd:x=(w-text_w)/2:y=1840:font=DejaVu Sans:shadowcolor=black@0.8:shadowx=1:shadowy=1[vfinal]`,
       ].join(";"),
       "-map", "[vfinal]", "-map", "2:a",
-      "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+      "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
+      "-c:a", "aac", "-b:a", "128k",
+      "-shortest", "-r", "25",
+      "-movflags", "+faststart",
+      outputPath,
+    ];
+  } else if (clipPaths.length === 1) {
+    // 1 vídeo real em loop
+    ffmpegArgs = [
+      "-y",
+      "-stream_loop", "-1", "-i", clipPaths[0],
+      "-i", audioPath,
+      "-filter_complex", [
+        `[0:v]colorchannelmixer=rr=0.5:gg=0.5:bb=0.5[vdark]`,
+        `[vdark]drawbox=x=0:y=0:w=1080:h=320:color=black@0.75:t=fill[vtop]`,
+        `[vtop]drawbox=x=0:y=1600:w=1080:h=320:color=black@0.75:t=fill[vbox]`,
+        `[vbox]drawtext=text='VIRALIFY':fontsize=54:fontcolor=0xc084fc:x=(w-text_w)/2:y=38:font=DejaVu Sans:shadowcolor=black@0.8:shadowx=2:shadowy=2[vt1]`,
+        `[vt1]drawtext=text='${tituloSafe}':fontsize=52:fontcolor=white:x=(w-text_w)/2:y=120:font=DejaVu Sans:shadowcolor=black@0.9:shadowx=2:shadowy=2[vt2]`,
+        `[vt2]drawtext=text='${precoSafe}':fontsize=80:fontcolor=0x4ade80:x=(w-text_w)/2:y=1620:font=DejaVu Sans:shadowcolor=black@0.9:shadowx=3:shadowy=3[vt3]`,
+        `[vt3]drawtext=text='Comissao ${produto.commission}porcento para voce':fontsize=42:fontcolor=0xfbbf24:x=(w-text_w)/2:y=1730:font=DejaVu Sans:shadowcolor=black@0.8:shadowx=2:shadowy=2[vt4]`,
+        `[vt4]drawtext=text='${hashSafe}':fontsize=34:fontcolor=0x93c5fd:x=(w-text_w)/2:y=1840:font=DejaVu Sans:shadowcolor=black@0.8:shadowx=1:shadowy=1[vfinal]`,
+      ].join(";"),
+      "-map", "[vfinal]", "-map", "1:a",
+      "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
       "-c:a", "aac", "-b:a", "128k",
       "-shortest", "-r", "25",
       "-movflags", "+faststart",
       outputPath,
     ];
   } else {
-    // Fallback: fundo gradiente roxo com texto
-    const tituloSafe = titulo.replace(/'/g, "\\'").replace(/:/g, "\\:").slice(0, 45);
+    // Fallback: fundo gradiente com Ken Burns em cor sólida
     ffmpegArgs = [
       "-y",
-      "-f", "lavfi", "-i", `color=c=0x1a0a2e:s=1080x1920:r=25`,
+      "-f", "lavfi", "-i", "color=c=0x1a0a2e:s=1080x1920:r=25",
       "-i", audioPath,
       "-filter_complex", [
         `[0:v]drawbox=x=0:y=0:w=1080:h=1920:color=0x7c3aed@0.3:t=fill[vbg]`,
@@ -252,16 +378,16 @@ async function gerarVideo(roteiro, audioPath, produto, outputPath) {
 
   const r = spawnSync(FFMPEG, ffmpegArgs, {
     encoding: "utf8",
-    maxBuffer: 50 * 1024 * 1024,
-    timeout: 240000,
+    maxBuffer: 100 * 1024 * 1024,
+    timeout: 300000,
   });
 
-  // Limpa imagens temporárias
-  [...imgPaths, thumbPath].forEach(p => { try { fs.unlinkSync(p); } catch {} });
+  // Limpa clips temporários
+  clipPaths.forEach(p => { try { fs.unlinkSync(p); } catch {} });
 
   if (r.status !== 0) {
-    console.error("FFmpeg stderr:", (r.stderr || "").slice(-800));
-    // Se falhou com imagens, tenta fallback simples
+    console.error("FFmpeg stderr:", (r.stderr || "").slice(-1000));
+    // Fallback simples sem texto
     const fallback = spawnSync(FFMPEG, [
       "-y",
       "-f", "lavfi", "-i", "color=c=0x1a0a2e:s=1080x1920:r=25",
@@ -273,7 +399,7 @@ async function gerarVideo(roteiro, audioPath, produto, outputPath) {
     ], { encoding: "utf8", maxBuffer: 30 * 1024 * 1024, timeout: 120000 });
 
     if (fallback.status !== 0) {
-      throw new Error("FFmpeg falhou: " + (fallback.stderr || fallback.stdout || "exit " + fallback.status).slice(-400));
+      throw new Error("FFmpeg falhou: " + (fallback.stderr || "").slice(-400));
     }
   }
 
