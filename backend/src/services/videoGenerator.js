@@ -166,21 +166,25 @@ async function gerarRoteiro(produto) {
     model: "llama-3.3-70b-versatile",
     messages: [{
       role: "user",
-      content: `Você é um roteirista viral de TikTok brasileiro. Crie um roteiro de vídeo curto para afiliado.
+      content: `Você é um roteirista viral de TikTok e Reels brasileiro experiente. Crie um roteiro de vídeo de afiliado que dure entre 25 e 35 segundos quando narrado em voz alta.
 
 Produto: ${produto.title}
 Preço: R$ ${produto.price}
 Comissão: ${produto.commission}%
 
-FORMATO OBRIGATÓRIO (exatamente assim):
-TITULO: [máximo 60 caracteres, chamativo]
-ROTEIRO: [texto para narrar em voz alta, máximo 280 caracteres, português brasileiro coloquial, sem emojis, sem hashtags]
+FORMATO OBRIGATÓRIO (siga exatamente):
+TITULO: [máximo 60 caracteres, chamativo, use números ou pergunta]
+ROTEIRO: [texto corrido para narrar, entre 400 e 550 caracteres, português brasileiro coloquial, sem emojis, sem hashtags — inclua: gancho de abertura, benefício principal, prova social ou dado, preço, chamada para ação com "link na bio"]
 HASHTAGS: #tag1 #tag2 #tag3 #tag4 #tag5
 
-O roteiro deve soar natural como uma pessoa falando, não um robô. Use gírias brasileiras.`,
+Regras do roteiro:
+- Comece com gancho forte (ex: "Cara, descobri um negócio absurdo...")
+- Fale o preço de forma natural
+- Termine com "pega o link na bio antes de acabar o estoque"
+- Tom: amigo empolgado falando pro outro, não vendedor robô`,
     }],
-    max_tokens: 400,
-    temperature: 0.9,
+    max_tokens: 700,
+    temperature: 0.85,
   });
   return completion.choices[0].message.content;
 }
@@ -192,7 +196,7 @@ async function gerarAudio(texto, outputPath) {
     .replace(/HASHTAGS:.*/gi, "")
     .replace(/\n+/g, " ")
     .trim()
-    .slice(0, 500);
+    .slice(0, 800);
 
   const elevenKey = process.env.ELEVENLABS_API_KEY;
   if (elevenKey) {
