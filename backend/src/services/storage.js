@@ -19,26 +19,36 @@ function getClient() {
       accessKeyId: process.env.R2_ACCESS_KEY_ID || "",
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || "",
     },
+    // R2 requer path-style para evitar erro de DNS
+    forcePathStyle: true,
   });
   return s3Client;
 }
 
 async function uploadFile(localPath, key, contentType = "video/mp4") {
   const client = getClient();
-  if (!client) return null; // sem R2 configurado, retorna null
+  if (!client) {
+    console.log("[R2] sem credenciais configuradas, pulando upload");
+    return null;
+  }
 
-  const fileBuffer = fs.readFileSync(localPath);
-  await client.send(new PutObjectCommand({
-    Bucket: R2_BUCKET,
-    Key: key,
-    Body: fileBuffer,
-    ContentType: contentType,
-  }));
-
-  // URL pública via Custom Domain do R2 ou URL padrão
-  const publicDomain = process.env.R2_PUBLIC_URL;
-  if (publicDomain) return `${publicDomain}/${key}`;
-  return null; // R2 sem domínio público configurado
+  try {
+    const fileBuffer = fs.readFileSync(localPath);
+    console.log(`[R2] uploadando ${key} (${(fileBuffer.length/1024/1024).toFixed(1)}MB)...`);
+    await client.send(new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: key,
+      Body: fileBuffer,
+      ContentType: contentType,
+    }));
+    const publicDomain = process.env.R2_PUBLIC_URL;
+    const url = publicDomain ? `${publicDomain}/${key}` : null;
+    console.log(`[R2] upload OK: ${url}`);
+    return url;
+  } catch (e) {
+    console.error("[R2] erro no upload:", e.message);
+    return null;
+  }
 }
 
 async function uploadVideo(localPath, videoId) {
