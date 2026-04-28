@@ -24,7 +24,7 @@ function planGuard(...plans) {
         error: "Plano insuficiente",
         required: plans,
         current: req.user.plan,
-        upgrade: "https://viralify.com.br/planos",
+        upgrade: "https://viralify-ia.vercel.app/planos",
       });
     }
     next();

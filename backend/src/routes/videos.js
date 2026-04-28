@@ -44,7 +44,7 @@ router.post("/generate", authMiddleware, async (req, res) => {
   if (count >= limit) {
     return res.status(403).json({
       error: `Limite de ${limit} vídeos/mês atingido`,
-      upgrade: "https://viralify.com.br/planos",
+      upgrade: "https://viralify-ia.vercel.app/planos",
     });
   }
 

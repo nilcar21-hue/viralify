@@ -19,7 +19,7 @@ const prisma = new PrismaClient();
 app.use(cors({
   origin: [
     "http://localhost:3000",
-    "https://viralify.com.br",
+    "https://viralify-ia.vercel.app",
     "https://viralify.angralocal.online",
     "https://frontend-five-eta-63.vercel.app",
     /\.vercel\.app$/,

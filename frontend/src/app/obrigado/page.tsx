@@ -59,7 +59,7 @@ export default function ObrigadoPage() {
           <div className="space-y-4">
             {[
               { step: "1", title: "Verifique seu email", desc: "Enviamos os dados de acesso para o email cadastrado" },
-              { step: "2", title: "Acesse o app", desc: "Entre em viralify.angralocal.online com seu login e senha" },
+              { step: "2", title: "Acesse o app", desc: "Entre em viralify-ia.vercel.app com seu login e senha" },
               { step: "3", title: "Gere seu primeiro vídeo", desc: "Escolha um produto e clique em Gerar — em 60s seu vídeo fica pronto" },
             ].map(s => (
               <div key={s.step} className="flex gap-4 items-start">
@@ -71,7 +71,7 @@ export default function ObrigadoPage() {
               </div>
             ))}
           </div>
-          <Link href="https://viralify.angralocal.online/login" target="_blank"
+          <Link href="https://viralify-ia.vercel.app/login" target="_blank"
             className="mt-6 block w-full text-center bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-3 px-6 rounded-xl transition-all">
             Acessar o app agora
           </Link>
@@ -136,7 +136,7 @@ export default function ObrigadoPage() {
             <Star size={32} className="text-yellow-400 mx-auto mb-3" />
             <h3 className="font-bold mb-2">Você tem 30 dias para experimentar</h3>
             <p className="text-gray-400 text-sm mb-4">Se quiser fazer upgrade para ULTRA a qualquer momento, acesse Configurações dentro do app.</p>
-            <Link href="https://viralify.angralocal.online/login" target="_blank"
+            <Link href="https://viralify-ia.vercel.app/login" target="_blank"
               className="inline-block bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 px-8 rounded-xl">
               Começar agora
             </Link>
