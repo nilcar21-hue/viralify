@@ -2,7 +2,6 @@ const router = require("express").Router();
 const { PrismaClient } = require("@prisma/client");
 const { authMiddleware } = require("../middleware/auth");
 const { gerarRoteiro, gerarAudio, gerarVideo } = require("../services/videoGenerator");
-const { uploadVideo, uploadAudio, hasStorage } = require("../services/storage");
 const path = require("path");
 const fs = require("fs");
 
@@ -84,25 +83,13 @@ router.post("/generate", authMiddleware, async (req, res) => {
       const videoPath = `${base}.mp4`;
       await gerarVideo(roteiro, audioPath, product, videoPath);
 
-      // 4. Upload para R2 (storage persistente) se configurado
-      let videoUrl = `/uploads/${video.id}.mp4`;
-      let audioUrl = `/uploads/${video.id}.mp3`;
-      if (hasStorage()) {
-        const [vUrl, aUrl] = await Promise.all([
-          uploadVideo(videoPath, video.id),
-          uploadAudio(audioPath, video.id),
-        ]);
-        if (vUrl) videoUrl = vUrl;
-        if (aUrl) audioUrl = aUrl;
-      }
-
-      // 5. Atualiza banco
+      // 4. Atualiza banco
       await prisma.video.update({
         where: { id: video.id },
         data: {
           status: "READY",
-          videoUrl,
-          audioUrl,
+          videoUrl: `/uploads/${video.id}.mp4`,
+          audioUrl: `/uploads/${video.id}.mp3`,
         },
       });
 
