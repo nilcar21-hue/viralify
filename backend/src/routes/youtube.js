@@ -1,7 +1,9 @@
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 const { getAuthUrl, exchangeCode, uploadVSLToYoutube } = require("../services/youtubeUploader");
+const { generateVSL } = require("../services/vslGenerator");
 
 const router = express.Router();
 
@@ -47,17 +49,9 @@ router.get("/callback", async (req, res) => {
   }
 });
 
-// Passo 3: Faz upload da VSL gerada para o YouTube
+// Passo 3: Gera a VSL e faz upload direto para o YouTube em pipeline único
 // POST /youtube/upload-vsl
 router.post("/upload-vsl", adminOnly, async (req, res) => {
-  const vslPath = path.join(__dirname, "../../uploads/viralify-vsl.mp4");
-
-  if (!fs.existsSync(vslPath)) {
-    return res.status(404).json({
-      error: "VSL não encontrada. Gere primeiro via POST /vsl/generate",
-    });
-  }
-
   const {
     title = "Como Ganhar Comissão no Mercado Livre Sem Aparecer na Câmera — Viralify",
     description = `Descubra como afiliados estão faturando R$ 4.800/mês no Mercado Livre sem gravar vídeo, sem aparecer na câmera e sem edição.
@@ -75,14 +69,21 @@ A Viralify usa inteligência artificial para criar vídeos virais completos em m
     privacyStatus = "public",
   } = req.body;
 
-  res.json({ status: "uploading", message: "Upload iniciado em background — aguarde ~2 minutos" });
+  res.json({ status: "processing", message: "Gerando VSL e fazendo upload para o YouTube em background — aguarde ~8 minutos" });
 
-  uploadVSLToYoutube({ videoPath: vslPath, title, description, tags, privacyStatus })
+  // Pipeline: gera VSL em /tmp (persiste no mesmo processo) → upload → limpa
+  const outputDir = path.join(os.tmpdir(), "viralify_vsl_" + Date.now());
+  const outputPath = path.join(os.tmpdir(), "viralify-vsl-yt.mp4");
+
+  generateVSL(outputDir, outputPath)
+    .then(() => uploadVSLToYoutube({ videoPath: outputPath, title, description, tags, privacyStatus }))
     .then(({ videoId, videoUrl }) => {
       console.log("VSL publicada no YouTube:", videoUrl);
+      try { fs.unlinkSync(outputPath); } catch {}
     })
     .catch((e) => {
-      console.error("YouTube upload erro:", e.message);
+      console.error("YouTube pipeline erro:", e.message);
+      try { fs.unlinkSync(outputPath); } catch {}
     });
 });
 
