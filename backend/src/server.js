@@ -11,6 +11,7 @@ const productRoutes   = require("./routes/products");
 const videoRoutes     = require("./routes/videos");
 const analyticsRoutes = require("./routes/analytics");
 const webhookRoutes   = require("./routes/webhooks");
+const youtubeRoutes   = require("./routes/youtube");
 const { generateVSL } = require("./services/vslGenerator");
 
 const app = express();
@@ -33,6 +34,7 @@ app.use("/products",  productRoutes);
 app.use("/videos",    videoRoutes);
 app.use("/analytics", analyticsRoutes);
 app.use("/webhooks",  webhookRoutes);
+app.use("/youtube",   youtubeRoutes);
 
 // Servir uploads com CORS aberto para vídeos
 app.use("/uploads", (req, res, next) => {
