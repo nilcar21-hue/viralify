@@ -6,44 +6,60 @@ const FFMPEG = process.env.FFMPEG_PATH || "ffmpeg";
 const ELEVENLABS_KEY = process.env.ELEVENLABS_API_KEY;
 
 // Voz masculina jovem — Adam (ElevenLabs)
-const VOICE_ID = "pNInz6obpgDQGcFmaJgB"; // Adam — jovem, masculino, energético
+const VOICE_ID = "pNInz6obpgDQGcFmaJgB";
 
-// Roteiro VSL Viralify — 90 segundos, 7 cenas
+// Roteiro VSL Viralify — ~2 minutos, 10 cenas, alta conversão
+// Estrutura: Gancho → Dor → Agitação → Solução → Prova → Oferta → Urgência → CTA
 const VSL_SCENES = [
   {
-    text: "E se eu te dissesse que dá pra ganhar comissão no Mercado Livre... sem gravar vídeo, sem aparecer na câmera, e sem saber editar nada?",
-    image: "https://images.pexels.com/photos/4386431/pexels-photo-4386431.jpeg", // pessoa no celular vendo dinheiro
+    text: "E se você pudesse ganhar comissões no Mercado Livre todos os dias... sem gravar vídeo, sem aparecer na câmera, e sem saber editar?",
+    image: "https://images.pexels.com/photos/4386431/pexels-photo-4386431.jpeg",
     duration: 8,
   },
   {
-    text: "A maioria das pessoas desiste de ser afiliada porque criar conteúdo dá muito trabalho. Roteiro, gravação, edição... horas perdidas pra um vídeo só.",
-    image: "https://images.pexels.com/photos/3758105/pexels-photo-3758105.jpeg", // pessoa frustrada no computador
-    duration: 10,
-  },
-  {
-    text: "Apresentando a Viralify. Você cola o link do produto. A inteligência artificial cria o roteiro viral em português.",
-    image: "https://images.pexels.com/photos/8386440/pexels-photo-8386440.jpeg", // tela de IA / tecnologia
+    text: "Isso não é promessa vazia. Mais de três mil pessoas já estão fazendo exatamente isso agora mesmo. E eu vou te mostrar como em menos de dois minutos.",
+    image: "https://images.pexels.com/photos/7567434/pexels-photo-7567434.jpeg",
     duration: 9,
   },
   {
-    text: "A narração fica incrível — parece locutor profissional. E o vídeo fica pronto para TikTok, YouTube e Shopee em menos de 60 segundos.",
-    image: "https://images.pexels.com/photos/6476808/pexels-photo-6476808.jpeg", // pessoa assistindo tiktok
-    duration: 10,
+    text: "O problema é que a maioria das pessoas desiste de ser afiliada porque criar conteúdo é difícil demais. Roteiro, câmera, iluminação, edição... horas de trabalho pra um vídeo que talvez nem performe.",
+    image: "https://images.pexels.com/photos/3758105/pexels-photo-3758105.jpeg",
+    duration: 12,
   },
   {
-    text: "Criadores como o Lucas estão fazendo quatro mil e oitocentos reais por mês. A Camila publica cinco vídeos por dia sem aparecer. O Rafael teve dois milhões de views em três semanas.",
-    image: "https://images.pexels.com/photos/7567434/pexels-photo-7567434.jpeg", // pessoa feliz com celular / sucesso
+    text: "E sem vídeo, você simplesmente não aparece. O algoritmo do TikTok, do YouTube Shorts, do Instagram... tudo favorece quem posta vídeo. Quem não posta fica invisível.",
+    image: "https://images.pexels.com/photos/6476808/pexels-photo-6476808.jpeg",
+    duration: 11,
+  },
+  {
+    text: "Apresentando a Viralify. A inteligência artificial que transforma qualquer link de produto em um vídeo viral completo — com roteiro, narração profissional e edição cinematográfica — em menos de 60 segundos.",
+    image: "https://images.pexels.com/photos/8386440/pexels-photo-8386440.jpeg",
     duration: 14,
   },
   {
-    text: "Funciona para Mercado Livre, Shopee, Amazon, qualquer marketplace. Você não precisa de câmera, de equipamento, nem de experiência.",
-    image: "https://images.pexels.com/photos/5632399/pexels-photo-5632399.jpeg", // produtos e-commerce
-    duration: 10,
+    text: "É simples assim: você cola o link do produto do Mercado Livre. A IA cria o roteiro viral em português. A narração soa como um locutor profissional. E o vídeo fica pronto para TikTok, YouTube Shorts e Instagram Reels.",
+    image: "https://images.pexels.com/photos/5632399/pexels-photo-5632399.jpeg",
+    duration: 14,
   },
   {
-    text: "Você começa grátis hoje. Três vídeos sem cartão de crédito. Se não funcionar, não paga nada. Clica no link abaixo e gera seu primeiro vídeo agora.",
-    image: "https://images.pexels.com/photos/4386373/pexels-photo-4386373.jpeg", // celular com app / call to action
-    duration: 10,
+    text: "O Lucas estava desempregado há seis meses. Com a Viralify, ele publica cinco vídeos por dia sem aparecer na câmera e hoje faz quatro mil e oitocentos reais por mês de comissão. A Camila saiu do emprego CLT em noventa dias. O Rafael teve dois milhões de views em três semanas.",
+    image: "https://images.pexels.com/photos/4386373/pexels-photo-4386373.jpeg",
+    duration: 16,
+  },
+  {
+    text: "Funciona para Mercado Livre, Shopee, Amazon, qualquer marketplace. Você não precisa de câmera, de equipamento caro, de experiência com edição, nem de aparecer em nenhum momento.",
+    image: "https://images.pexels.com/photos/6347888/pexels-photo-6347888.jpeg",
+    duration: 12,
+  },
+  {
+    text: "E o melhor: você começa hoje, de graça. Três vídeos completos sem cartão de crédito. Se não funcionar, não paga absolutamente nada. Sem risco, sem pegadinha.",
+    image: "https://images.pexels.com/photos/4386442/pexels-photo-4386442.jpeg",
+    duration: 11,
+  },
+  {
+    text: "Clica no link abaixo agora, cria sua conta grátis e gera seu primeiro vídeo viral em menos de sessenta segundos. Mais de três mil afiliados já começaram — agora é a sua vez.",
+    image: "https://images.pexels.com/photos/4050315/pexels-photo-4050315.jpeg",
+    duration: 11,
   },
 ];
 
@@ -80,12 +96,21 @@ async function generateAudio(text, outputPath) {
   fs.writeFileSync(outputPath, Buffer.from(buf));
 }
 
+function getAudioDuration(audPath, fallback) {
+  const probe = spawnSync(FFMPEG, ["-i", audPath, "-f", "null", "-"], {
+    encoding: "utf8", timeout: 15000,
+  });
+  const m = (probe.stderr || "").match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
+  return m
+    ? parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseFloat(m[3])
+    : fallback;
+}
+
 async function generateVSL(outputDir, outputPath) {
   fs.mkdirSync(outputDir, { recursive: true });
 
   console.log("VSL: baixando imagens e gerando áudios...");
 
-  // 1. Baixar imagens e gerar áudios em paralelo
   const scenes = [];
   for (let i = 0; i < VSL_SCENES.length; i++) {
     const scene = VSL_SCENES[i];
@@ -102,58 +127,57 @@ async function generateVSL(outputDir, outputPath) {
     scenes.push({ imgPath, audPath, vidPath, duration: scene.duration });
   }
 
-  // 2. Montar cada cena: imagem + áudio + zoom lento (Ken Burns effect)
-  console.log("VSL: montando cenas com FFmpeg...");
+  console.log("VSL: montando cenas com FFmpeg (16:9, 1920x1080)...");
   for (let i = 0; i < scenes.length; i++) {
     const { imgPath, audPath, vidPath, duration } = scenes[i];
     console.log(`  Renderizando cena ${i + 1}...`);
 
-    // Pega duração real do áudio
-    const probe = spawnSync(FFMPEG, [
-      "-i", audPath, "-f", "null", "-"
-    ], { encoding: "utf8", timeout: 15000 });
-    const durMatch = (probe.stderr || "").match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
-    const audioDur = durMatch
-      ? parseInt(durMatch[1]) * 3600 + parseInt(durMatch[2]) * 60 + parseFloat(durMatch[3])
-      : duration;
+    const audioDur = getAudioDuration(audPath, duration);
     const sceneDur = Math.ceil(audioDur) + 0.5;
+    const frames = Math.round(sceneDur * 25);
+
+    // Ken Burns suave: zoom in nas cenas pares, zoom out nas ímpares
+    const zoomExpr = i % 2 === 0
+      ? `min(zoom+0.0006,1.06)`
+      : `if(eq(on,1),1.06,max(zoom-0.0006,1.0))`;
 
     const r = spawnSync(FFMPEG, [
       "-y",
       "-loop", "1", "-t", String(sceneDur), "-i", imgPath,
       "-i", audPath,
       "-filter_complex",
-      `[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,zoompan=z='min(zoom+0.0008,1.08)':d=${Math.round(sceneDur * 25)}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25[v]`,
+      `[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,` +
+      `zoompan=z='${zoomExpr}':d=${frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25,` +
+      `format=yuv420p[v]`,
       "-map", "[v]", "-map", "1:a",
-      "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+      "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
       "-c:a", "aac", "-b:a", "128k",
       "-shortest", "-r", "25",
       vidPath,
-    ], { encoding: "utf8", maxBuffer: 50 * 1024 * 1024, timeout: 120000 });
+    ], { encoding: "utf8", maxBuffer: 50 * 1024 * 1024, timeout: 180000 });
 
     if (r.status !== 0) {
       throw new Error(`FFmpeg cena ${i + 1} falhou: ${(r.stderr || "").slice(-400)}`);
     }
   }
 
-  // 3. Concatenar todas as cenas
   console.log("VSL: concatenando cenas...");
   const listPath = path.join(outputDir, "concat.txt");
   fs.writeFileSync(listPath, scenes.map(s => `file '${s.vidPath.replace(/\\/g, "/")}'`).join("\n"));
 
   const concat = spawnSync(FFMPEG, [
     "-y", "-f", "concat", "-safe", "0", "-i", listPath,
-    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
-    "-c:a", "aac", "-b:a", "128k",
+    "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+    "-c:a", "aac", "-b:a", "192k",
     "-movflags", "+faststart",
+    "-pix_fmt", "yuv420p",
     outputPath,
-  ], { encoding: "utf8", maxBuffer: 100 * 1024 * 1024, timeout: 300000 });
+  ], { encoding: "utf8", maxBuffer: 200 * 1024 * 1024, timeout: 600000 });
 
   if (concat.status !== 0) {
     throw new Error(`FFmpeg concat falhou: ${(concat.stderr || "").slice(-400)}`);
   }
 
-  // 4. Limpeza dos arquivos temporários
   scenes.forEach(s => {
     [s.imgPath, s.audPath, s.vidPath].forEach(f => {
       try { fs.unlinkSync(f); } catch {}
