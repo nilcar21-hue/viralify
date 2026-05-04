@@ -75,7 +75,11 @@ export default function Videos() {
                 {/* Thumbnail / preview */}
                 <div className="w-full h-40 bg-gray-800 rounded-xl flex items-center justify-center relative overflow-hidden">
                   {v.videoUrl ? (
-                    <video src={v.videoUrl} className="w-full h-full object-cover rounded-xl" />
+                    <video
+                      src={v.videoUrl.startsWith("http") ? v.videoUrl : `${API}${v.videoUrl}`}
+                      className="w-full h-full object-cover rounded-xl"
+                      preload="metadata"
+                    />
                   ) : (
                     <Video size={36} className="text-gray-600" />
                   )}
