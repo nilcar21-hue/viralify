@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recha
 import { Video, ShoppingBag, Eye, DollarSign, TrendingUp, Plus, Zap } from "lucide-react";
 import Link from "next/link";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const API = process.env.NEXT_PUBLIC_API_URL || "https://viralify-production.up.railway.app";
 
 function StatCard({ icon: Icon, label, value, color, sub }: any) {
   return (

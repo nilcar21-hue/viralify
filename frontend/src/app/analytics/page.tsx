@@ -7,7 +7,7 @@ import {
 import { Eye, MousePointer, DollarSign, TrendingUp, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const API = process.env.NEXT_PUBLIC_API_URL || "https://viralify-production.up.railway.app";
 
 function MetricCard({ icon: Icon, label, value, color, change }: any) {
   const positive = change >= 0;

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Search, Bookmark, BookmarkCheck, TrendingUp, ArrowLeft, Filter } from "lucide-react";
 import Link from "next/link";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const API = process.env.NEXT_PUBLIC_API_URL || "https://viralify-production.up.railway.app";
 
 const CATEGORIES = ["Todos", "Eletrônicos", "Moda", "Casa", "Esportes", "Beleza", "Livros", "Games", "Alimentos"];
 

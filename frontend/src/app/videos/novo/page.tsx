@@ -4,7 +4,7 @@ import { Search, Zap, Check, ArrowLeft, Loader } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const API = process.env.NEXT_PUBLIC_API_URL || "https://viralify-production.up.railway.app";
 
 export default function NovoVideo() {
   const router = useRouter();
