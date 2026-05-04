@@ -66,6 +66,16 @@ app.post("/vsl/generate", async (req, res) => {
   generateVSL(outputDir, outputPath).catch(e => console.error("VSL erro:", e.message));
 });
 
+// Admin: reseta produtos do banco para forçar novo fallback com imagens corretas
+app.post("/admin/reset-products", async (req, res) => {
+  const token = req.headers["x-admin-token"];
+  if (token !== "viralify_admin_2025") return res.status(401).json({ error: "Não autorizado" });
+  const { PrismaClient } = require("@prisma/client");
+  const p = new PrismaClient();
+  await p.product.deleteMany({});
+  res.json({ ok: true, message: "Produtos deletados — próxima chamada /products/trending vai recriar com imagens corretas" });
+});
+
 app.get("/debug/env", (_, res) => res.json({
   ELEVENLABS: process.env.ELEVENLABS_API_KEY?.slice(0, 15) || "NAO_DEFINIDA",
   GROQ: process.env.GROQ_API_KEY?.slice(0, 10) || "NAO_DEFINIDA",
