@@ -1,7 +1,11 @@
 const router = require("express").Router();
 const axios = require("axios");
+const cheerio = require("cheerio");
 const { PrismaClient } = require("@prisma/client");
 const { authMiddleware, planGuard } = require("../middleware/auth");
+const Groq = require("groq-sdk");
+
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const prisma = new PrismaClient();
 
@@ -106,48 +110,205 @@ router.get("/trending", authMiddleware, async (req, res) => {
   }
 });
 
-// POST /products/from-url — extrai produto de link ML/Shopee e cria no banco
+// Scraper universal — extrai título, preço e imagem de qualquer URL
+async function scrapeProduct(url) {
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+  };
+
+  const { data: html } = await axios.get(url, { timeout: 15000, headers, maxRedirects: 5 });
+  const $ = cheerio.load(html);
+
+  // Título — prioridade: OG > Twitter > h1 > title
+  let title =
+    $('meta[property="og:title"]').attr("content") ||
+    $('meta[name="twitter:title"]').attr("content") ||
+    $('meta[itemprop="name"]').attr("content") ||
+    $("h1").first().text() ||
+    $("title").text() || "";
+  title = title.replace(/\s+/g, " ").trim().slice(0, 200);
+
+  // Imagem — prioridade: OG > Twitter > schema > primeira img grande
+  let thumbnail =
+    $('meta[property="og:image"]').attr("content") ||
+    $('meta[name="twitter:image"]').attr("content") ||
+    $('meta[itemprop="image"]').attr("content") ||
+    $('link[rel="image_src"]').attr("href") || "";
+
+  // Se não achou imagem nos meta tags, pega primeira img com tamanho razoável
+  if (!thumbnail) {
+    $("img").each((_, el) => {
+      const src = $(el).attr("src") || $(el).attr("data-src") || "";
+      const w = parseInt($(el).attr("width") || "0");
+      const h = parseInt($(el).attr("height") || "0");
+      if (src && (w > 200 || h > 200 || src.includes("product") || src.includes("produto"))) {
+        thumbnail = src;
+        return false;
+      }
+    });
+  }
+
+  // Resolve URL relativa
+  if (thumbnail && !thumbnail.startsWith("http")) {
+    const base = new URL(url);
+    thumbnail = thumbnail.startsWith("/") ? `${base.origin}${thumbnail}` : `${base.origin}/${thumbnail}`;
+  }
+
+  // Preço — schema.org > meta > seletores comuns
+  let price = 0;
+  const priceSchema = $('[itemprop="price"]').attr("content") || $('[itemprop="price"]').text();
+  if (priceSchema) {
+    price = parseFloat(priceSchema.replace(/[^\d.,]/g, "").replace(",", ".")) || 0;
+  }
+  if (!price) {
+    const priceMeta = $('meta[property="product:price:amount"]').attr("content") ||
+                      $('meta[name="twitter:data1"]').attr("content") || "";
+    price = parseFloat(priceMeta.replace(/[^\d.,]/g, "").replace(",", ".")) || 0;
+  }
+  if (!price) {
+    // Regex no HTML bruto para encontrar preço
+    const priceMatch = html.match(/R\$\s*([\d.]+[,\d]*)/);
+    if (priceMatch) price = parseFloat(priceMatch[1].replace(/\./g, "").replace(",", ".")) || 0;
+  }
+
+  // Usa Groq para extrair/validar dados se scraping foi parcial
+  if (!price || title.length < 5) {
+    const snippet = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 3000);
+    const resp = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [{
+        role: "user",
+        content: `Extraia do texto abaixo o nome do produto e o preço em reais. Responda APENAS em JSON: {"title": "...", "price": 99.90}\n\nTexto: ${snippet}`,
+      }],
+      max_tokens: 100,
+      temperature: 0,
+    });
+    try {
+      const extracted = JSON.parse(resp.choices[0].message.content.match(/\{.*\}/s)?.[0] || "{}");
+      if (!title || title.length < 5) title = extracted.title || title;
+      if (!price) price = extracted.price || 0;
+    } catch {}
+  }
+
+  return { title, price, thumbnail };
+}
+
+// POST /products/from-url — scraping universal de qualquer URL de produto
 router.post("/from-url", authMiddleware, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "URL obrigatória" });
 
   try {
-    // Extrai ID do produto de qualquer formato de URL do ML
-    const mlMatch = url.match(/MLB[-\s]?(\d+)/i) || url.match(/\/p\/([A-Z0-9]+)/i);
-    if (!mlMatch) return res.status(400).json({ error: "Link do Mercado Livre não reconhecido. Use o link direto do produto." });
+    // Tenta API do ML primeiro se for link ML (mais rápido e confiável)
+    const mlMatch = url.match(/MLB[-]?(\d+)/i);
+    if (mlMatch) {
+      const mlId = "MLB" + mlMatch[1];
+      const existing = await prisma.product.findUnique({ where: { mlId } }).catch(() => null);
+      if (existing) return res.json({ product: existing, cached: true });
 
-    const mlId = "MLB" + mlMatch[1].replace(/\D/g, "");
+      try {
+        const { data } = await axios.get(
+          `https://api.mercadolibre.com/items/${mlId}`,
+          { timeout: 10000, headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" } }
+        );
+        const thumbnail = (data.pictures?.[0]?.url || data.thumbnail || "").replace("I.jpg", "O.jpg");
+        const product = await prisma.product.create({
+          data: {
+            mlId: data.id,
+            title: data.title,
+            price: data.price,
+            commission: 8,
+            affiliateUrl: url,
+            category: data.category_id || "MLB1000",
+            thumbnail,
+            rating: 4.5,
+            sold: data.sold_quantity || 0,
+            trending: false,
+          },
+        });
+        return res.json({ product });
+      } catch {}
+    }
 
-    // Já existe no banco?
-    const existing = await prisma.product.findUnique({ where: { mlId } });
+    // Scraping universal para qualquer site
+    const { title, price, thumbnail } = await scrapeProduct(url);
+    if (!title) return res.status(400).json({ error: "Não foi possível extrair dados do produto neste link." });
+
+    const mlId = "URL_" + Buffer.from(url).toString("base64").slice(0, 20).replace(/[^a-zA-Z0-9]/g, "");
+    const existing = await prisma.product.findUnique({ where: { mlId } }).catch(() => null);
     if (existing) return res.json({ product: existing, cached: true });
-
-    // Busca na API do ML
-    const { data } = await axios.get(
-      `https://api.mercadolibre.com/items/${mlId}`,
-      { timeout: 10000, headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" } }
-    );
-
-    const thumbnail = (data.pictures?.[0]?.url || data.thumbnail || "").replace("I.jpg", "O.jpg");
 
     const product = await prisma.product.create({
       data: {
-        mlId: data.id,
-        title: data.title,
-        price: data.price,
+        mlId,
+        title,
+        price: price || 0,
         commission: 8,
-        affiliateUrl: `https://produto.mercadolivre.com.br/${data.id}`,
-        category: data.category_id || "MLB1000",
-        thumbnail,
+        affiliateUrl: url,
+        category: "MLB1000",
+        thumbnail: thumbnail || "",
         rating: 4.5,
-        sold: data.sold_quantity || 0,
+        sold: 0,
         trending: false,
       },
     });
 
     res.json({ product });
   } catch (e) {
-    res.status(500).json({ error: "Não foi possível buscar o produto. Verifique o link e tente novamente." });
+    console.error("from-url erro:", e.message);
+    res.status(500).json({ error: "Não foi possível acessar o link. Tente com o produto customizado." });
+  }
+});
+
+// POST /products/from-search — busca produto por texto livre (como Google)
+router.post("/from-search", authMiddleware, async (req, res) => {
+  const { query } = req.body;
+  if (!query) return res.status(400).json({ error: "Busca obrigatória" });
+
+  try {
+    // Primeiro tenta no banco local
+    const local = await prisma.product.findMany({
+      where: { title: { contains: query, mode: "insensitive" } },
+      take: 6,
+    });
+    if (local.length > 0) return res.json({ products: local, source: "cache" });
+
+    // Busca na API do ML por texto
+    const { data } = await axios.get(
+      `https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(query)}&sort=relevance&limit=6`,
+      { timeout: 10000, headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" } }
+    );
+
+    const products = (data.results || []).map((item: any) => ({
+      mlId: item.id,
+      title: item.title,
+      price: item.price,
+      commission: 8,
+      affiliateUrl: item.permalink || `https://produto.mercadolivre.com.br/${item.id}`,
+      category: item.category_id || "MLB1000",
+      thumbnail: (item.thumbnail || "").replace("I.jpg", "O.jpg"),
+      rating: 4.5,
+      sold: item.sold_quantity || 0,
+      trending: false,
+    }));
+
+    // Salva no banco
+    for (const p of products) {
+      await prisma.product.upsert({ where: { mlId: p.mlId }, update: p, create: p }).catch(() => {});
+    }
+
+    // Busca os ids salvos para retornar com id do banco
+    const saved = await prisma.product.findMany({
+      where: { mlId: { in: products.map((p: any) => p.mlId) } },
+    });
+
+    res.json({ products: saved, source: "search" });
+  } catch (e) {
+    console.error("from-search erro:", e.message);
+    res.status(500).json({ error: "Busca falhou. Tente colar o link direto do produto." });
   }
 });
 

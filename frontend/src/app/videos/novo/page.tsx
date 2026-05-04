@@ -48,20 +48,28 @@ export default function NovoVideo() {
       .catch(() => setLoadingProducts(false));
   }, []);
 
-  // Busca em tempo real no banco
+  const [searching, setSearching] = useState(false);
+
+  // Busca em tempo real — banco local + ML API
   useEffect(() => {
-    if (mode !== "catalogo") return;
+    if (mode !== "catalogo" || !search.trim()) return;
     const token = localStorage.getItem("token");
-    if (!search.trim()) return;
-    const timer = setTimeout(() => {
-      fetch(`${API}/products?search=${encodeURIComponent(search)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then(r => r.json())
-        .then(d => { if (d.products?.length) setProducts(d.products); });
-    }, 400);
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(`${API}/products/from-search`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ query: search }),
+        });
+        const d = await res.json();
+        if (d.products?.length) setProducts(d.products);
+      } finally {
+        setSearching(false);
+      }
+    }, 600);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, mode]);
 
   async function buscarPorLink() {
     if (!mlUrl.trim()) return;
@@ -260,11 +268,12 @@ export default function NovoVideo() {
           <div className="relative mb-6">
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
             <input
-              className="input pl-11"
-              placeholder="Buscar produto no catálogo..."
+              className="input pl-11 pr-11"
+              placeholder="Buscar qualquer produto (Air Fryer, Nike, iPhone...)"
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
+            {searching && <Loader size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-purple-400 animate-spin" />}
           </div>
           {loadingProducts ? (
             <div className="flex justify-center py-12">
@@ -306,11 +315,11 @@ export default function NovoVideo() {
         <div className="space-y-4">
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
             <p className="text-gray-300 font-medium mb-1">Cole o link do produto</p>
-            <p className="text-gray-500 text-sm mb-4">Funciona com qualquer link do Mercado Livre, incluindo links curtos e de afiliado.</p>
+            <p className="text-gray-500 text-sm mb-4">Funciona com qualquer site — Mercado Livre, Shopee, Amazon, Shein, Magalu, AliExpress e outros.</p>
             <div className="flex gap-3">
               <input
                 className="input flex-1"
-                placeholder="https://www.mercadolivre.com.br/produto/..."
+                placeholder="https://www.amazon.com.br/produto ou shopee.com.br/..."
                 value={mlUrl}
                 onChange={e => setMlUrl(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && buscarPorLink()}
