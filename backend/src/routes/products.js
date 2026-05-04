@@ -106,6 +106,78 @@ router.get("/trending", authMiddleware, async (req, res) => {
   }
 });
 
+// POST /products/from-url — extrai produto de link ML/Shopee e cria no banco
+router.post("/from-url", authMiddleware, async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: "URL obrigatória" });
+
+  try {
+    // Extrai ID do produto de qualquer formato de URL do ML
+    const mlMatch = url.match(/MLB[-\s]?(\d+)/i) || url.match(/\/p\/([A-Z0-9]+)/i);
+    if (!mlMatch) return res.status(400).json({ error: "Link do Mercado Livre não reconhecido. Use o link direto do produto." });
+
+    const mlId = "MLB" + mlMatch[1].replace(/\D/g, "");
+
+    // Já existe no banco?
+    const existing = await prisma.product.findUnique({ where: { mlId } });
+    if (existing) return res.json({ product: existing, cached: true });
+
+    // Busca na API do ML
+    const { data } = await axios.get(
+      `https://api.mercadolibre.com/items/${mlId}`,
+      { timeout: 10000, headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" } }
+    );
+
+    const thumbnail = (data.pictures?.[0]?.url || data.thumbnail || "").replace("I.jpg", "O.jpg");
+
+    const product = await prisma.product.create({
+      data: {
+        mlId: data.id,
+        title: data.title,
+        price: data.price,
+        commission: 8,
+        affiliateUrl: `https://produto.mercadolivre.com.br/${data.id}`,
+        category: data.category_id || "MLB1000",
+        thumbnail,
+        rating: 4.5,
+        sold: data.sold_quantity || 0,
+        trending: false,
+      },
+    });
+
+    res.json({ product });
+  } catch (e) {
+    res.status(500).json({ error: "Não foi possível buscar o produto. Verifique o link e tente novamente." });
+  }
+});
+
+// POST /products/custom — cria produto customizado com título, preço e foto própria
+router.post("/custom", authMiddleware, async (req, res) => {
+  const { title, price, commission = 8, thumbnailUrl } = req.body;
+  if (!title || !price) return res.status(400).json({ error: "Título e preço obrigatórios" });
+
+  try {
+    const mlId = "CUSTOM_" + Date.now() + "_" + req.user.id.slice(-6);
+    const product = await prisma.product.create({
+      data: {
+        mlId,
+        title,
+        price: parseFloat(price),
+        commission: parseFloat(commission),
+        affiliateUrl: "",
+        category: "MLB1000",
+        thumbnail: thumbnailUrl || "",
+        rating: 4.5,
+        sold: 0,
+        trending: false,
+      },
+    });
+    res.json({ product });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /products/:id/save — salva produto para o usuário
 router.post("/:id/save", authMiddleware, async (req, res) => {
   try {
