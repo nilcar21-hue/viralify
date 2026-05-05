@@ -2,12 +2,137 @@ const router = require("express").Router();
 const axios = require("axios");
 const cheerio = require("cheerio");
 const { PrismaClient } = require("@prisma/client");
-const { authMiddleware, planGuard } = require("../middleware/auth");
+const { authMiddleware } = require("../middleware/auth");
 const Groq = require("groq-sdk");
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent?key=`;
 
 const prisma = new PrismaClient();
+
+// ── Gemini: analisa imagem (base64 ou URL) e identifica produto ──
+async function geminiAnalyzeImage(imageBase64OrUrl, mimeType = "image/jpeg") {
+  const key = GEMINI_KEY || process.env.GEMINI_API_KEY;
+  if (!key) return null;
+
+  let part;
+  if (imageBase64OrUrl.startsWith("http")) {
+    // Baixa a imagem e converte para base64
+    try {
+      const res = await fetch(imageBase64OrUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+      const buf = await res.arrayBuffer();
+      const b64 = Buffer.from(buf).toString("base64");
+      const ct = res.headers.get("content-type") || mimeType;
+      part = { inlineData: { mimeType: ct.split(";")[0], data: b64 } };
+    } catch { return null; }
+  } else {
+    // Já é base64 (data:image/jpeg;base64,...)
+    const match = imageBase64OrUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (match) {
+      part = { inlineData: { mimeType: match[1], data: match[2] } };
+    } else {
+      part = { inlineData: { mimeType, data: imageBase64OrUrl } };
+    }
+  }
+
+  const body = {
+    contents: [{
+      parts: [
+        part,
+        { text: `Analise esta imagem de produto e retorne APENAS JSON válido:
+{
+  "title": "nome completo do produto em português",
+  "price": 0,
+  "brand": "marca se visível",
+  "category": "categoria do produto",
+  "keywords": "3-5 palavras-chave para buscar imagens de stock relacionadas em inglês",
+  "description": "descrição curta de 1 linha"
+}
+Se não conseguir identificar preço, use 0. Responda APENAS o JSON, sem texto extra.` }
+      ]
+    }],
+    generationConfig: { temperature: 0.1, maxOutputTokens: 300 }
+  };
+
+  try {
+    const res = await fetch(`${GEMINI_URL}${key}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    return JSON.parse(jsonMatch[0]);
+  } catch { return null; }
+}
+
+// ── Gemini: extrai dados de produto de HTML ou texto ──
+async function geminiExtractFromText(text) {
+  const key = GEMINI_KEY || process.env.GEMINI_API_KEY;
+  if (!key) return null;
+
+  const snippet = text.slice(0, 4000);
+  const body = {
+    contents: [{
+      parts: [{ text: `Extraia dados de produto do texto/HTML abaixo. Retorne APENAS JSON:
+{
+  "title": "nome completo do produto",
+  "price": 0.0,
+  "thumbnail": "URL da imagem principal do produto se encontrar",
+  "brand": "marca"
+}
+Se não encontrar preço, use 0. Responda APENAS o JSON.
+
+Texto: ${snippet}` }]
+    }],
+    generationConfig: { temperature: 0, maxOutputTokens: 200 }
+  };
+
+  try {
+    const res = await fetch(`${GEMINI_URL}${key}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+  } catch { return null; }
+}
+
+// ── POST /products/analyze-image — identifica produto por imagem ──
+router.post("/analyze-image", authMiddleware, async (req, res) => {
+  const { imageBase64, imageUrl } = req.body;
+  if (!imageBase64 && !imageUrl) return res.status(400).json({ error: "Imagem obrigatória" });
+
+  try {
+    const result = await geminiAnalyzeImage(imageBase64 || imageUrl);
+    if (!result || !result.title) {
+      return res.status(400).json({ error: "Não foi possível identificar o produto na imagem." });
+    }
+
+    // Busca imagem de stock correspondente no Pexels
+    let thumbnail = imageBase64 || imageUrl || "";
+    if (imageUrl && !imageBase64) thumbnail = imageUrl;
+
+    res.json({
+      title: result.title,
+      price: result.price || 0,
+      brand: result.brand || "",
+      category: result.category || "",
+      keywords: result.keywords || result.title,
+      description: result.description || "",
+      thumbnail,
+    });
+  } catch (e) {
+    res.status(500).json({ error: "Erro ao analisar imagem: " + e.message });
+  }
+});
 
 // GET /products — lista produtos com filtros
 router.get("/", authMiddleware, async (req, res) => {
@@ -250,26 +375,34 @@ router.post("/from-url", authMiddleware, async (req, res) => {
     console.log("Scraping falhou:", e.message);
   }
 
-  // TENTATIVA 2: Se scraping bloqueado (ML, Shopee etc), usa slug da URL + Groq
+  // TENTATIVA 2: Gemini lê o HTML bruto da página (mesmo bloqueado parcialmente)
+  if (!title || title.length < 5) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Accept": "text/html",
+          "Accept-Language": "pt-BR,pt;q=0.9",
+        },
+        redirect: "follow",
+      });
+      const html = await res.text();
+      const extracted = await geminiExtractFromText(html);
+      if (extracted?.title) {
+        title = extracted.title;
+        price = extracted.price || 0;
+        if (!thumbnail && extracted.thumbnail) thumbnail = extracted.thumbnail;
+      }
+    } catch {}
+  }
+
+  // TENTATIVA 3: Slug da URL + Gemini como último recurso
   if (!title || title.length < 5) {
     const slug = slugToKeywords(url);
     if (slug) {
       try {
-        const resp = await groq.chat.completions.create({
-          model: "llama-3.3-70b-versatile",
-          messages: [{
-            role: "user",
-            content: `Com base neste slug de URL de produto: "${slug}"
-Retorne APENAS JSON com nome do produto e preço estimado:
-{"title": "Nome completo do produto", "price": 99.90}
-Se não conseguir estimar o preço, use 0.`,
-          }],
-          max_tokens: 100,
-          temperature: 0.2,
-        });
-        const raw = resp.choices[0].message.content;
-        const parsed = JSON.parse(raw.match(/\{[^}]+\}/)?.[0] || "{}");
-        if (parsed.title) { title = parsed.title; price = parsed.price || 0; }
+        const extracted = await geminiExtractFromText(`URL slug: ${slug}\nURL completa: ${url}`);
+        if (extracted?.title) { title = extracted.title; price = extracted.price || 0; }
       } catch {}
     }
   }

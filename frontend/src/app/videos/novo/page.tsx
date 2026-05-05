@@ -98,14 +98,36 @@ export default function NovoVideo() {
     }
   }
 
-  function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  const [analyzingImage, setAnalyzingImage] = useState(false);
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      const result = ev.target?.result as string;
-      setCustomThumbPreview(result);
-      setCustomThumb(result); // base64 — será enviado como thumbnailUrl
+    reader.onload = async (ev) => {
+      const base64 = ev.target?.result as string;
+      setCustomThumbPreview(base64);
+      setCustomThumb(base64);
+
+      // Análise automática com Gemini Vision
+      setAnalyzingImage(true);
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API}/products/analyze-image`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ imageBase64: base64 }),
+        });
+        const text = await res.text();
+        let data: any;
+        try { data = JSON.parse(text); } catch { return; }
+        if (data.title) {
+          setCustomTitle(data.title);
+          if (data.price && data.price > 0) setCustomPrice(String(data.price));
+        }
+      } catch {} finally {
+        setAnalyzingImage(false);
+      }
     };
     reader.readAsDataURL(file);
   }
@@ -368,17 +390,26 @@ export default function NovoVideo() {
 
           {/* Upload foto */}
           <div>
-            <p className="text-sm text-gray-400 mb-2">Foto do produto</p>
+            <p className="text-sm text-gray-400 mb-1">Foto do produto</p>
+            <p className="text-xs text-gray-600 mb-3">A IA identifica o produto automaticamente pela imagem</p>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
             {customThumbPreview ? (
               <div className="relative w-40 h-40">
                 <img src={customThumbPreview} alt="preview" className="w-40 h-40 object-contain bg-gray-800 rounded-xl" />
-                <button
-                  onClick={() => { setCustomThumbPreview(""); setCustomThumb(""); }}
-                  className="absolute -top-2 -right-2 bg-red-600 rounded-full p-1"
-                >
-                  <X size={12} />
-                </button>
+                {analyzingImage && (
+                  <div className="absolute inset-0 bg-black/60 rounded-xl flex flex-col items-center justify-center gap-2">
+                    <Loader size={24} className="text-purple-400 animate-spin" />
+                    <span className="text-xs text-purple-300">Identificando...</span>
+                  </div>
+                )}
+                {!analyzingImage && (
+                  <button
+                    onClick={() => { setCustomThumbPreview(""); setCustomThumb(""); setCustomTitle(""); setCustomPrice(""); }}
+                    className="absolute -top-2 -right-2 bg-red-600 rounded-full p-1"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
               </div>
             ) : (
               <button
@@ -386,7 +417,7 @@ export default function NovoVideo() {
                 className="w-40 h-40 border-2 border-dashed border-gray-700 hover:border-purple-500 rounded-xl flex flex-col items-center justify-center gap-2 text-gray-500 hover:text-purple-400 transition-colors"
               >
                 <ImagePlus size={28} />
-                <span className="text-xs text-center px-2">Clique para adicionar foto do produto</span>
+                <span className="text-xs text-center px-2">Foto ou print do produto — IA identifica automaticamente</span>
               </button>
             )}
           </div>
