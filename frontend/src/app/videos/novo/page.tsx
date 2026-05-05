@@ -126,20 +126,37 @@ export default function NovoVideo() {
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Redimensiona para max 800px antes de enviar ao Gemini (evita erro 400 por imagem grande)
+    function resizeImage(dataUrl: string, maxPx = 800): Promise<string> {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", 0.85));
+        };
+        img.src = dataUrl;
+      });
+    }
+
     const reader = new FileReader();
     reader.onload = async (ev) => {
-      const base64 = ev.target?.result as string;
-      setCustomThumbPreview(base64);
-      setCustomThumb(base64);
+      const original = ev.target?.result as string;
+      setCustomThumbPreview(original);
+      setCustomThumb(original);
 
-      // Análise automática com Gemini Vision
       setAnalyzingImage(true);
       try {
+        const resized = await resizeImage(original);
         const token = localStorage.getItem("token");
         const res = await fetch(`${API}/products/analyze-image`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ imageBase64: base64 }),
+          body: JSON.stringify({ imageBase64: resized }),
         });
         const text = await res.text();
         let data: any;
