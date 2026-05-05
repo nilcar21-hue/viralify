@@ -77,20 +77,43 @@ export default function NovoVideo() {
     setUrlError("");
     setUrlProduct(null);
     const token = localStorage.getItem("token");
+
+    const isUrl = /^https?:\/\//i.test(mlUrl.trim());
+
     try {
-      const res = await fetch(`${API}/products/from-url`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ url: mlUrl }),
-      });
-      const text = await res.text();
-      let data: any;
-      try { data = JSON.parse(text); } catch {
-        throw new Error("Servidor indisponível. Tente novamente em instantes.");
+      if (isUrl) {
+        // É uma URL — chama from-url
+        const res = await fetch(`${API}/products/from-url`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ url: mlUrl.trim() }),
+        });
+        const text = await res.text();
+        let data: any;
+        try { data = JSON.parse(text); } catch {
+          throw new Error("Servidor indisponível. Tente novamente em instantes.");
+        }
+        if (!res.ok) throw new Error(data.error || "Erro ao buscar produto");
+        setUrlProduct(data.product);
+        setSelected(data.product);
+      } else {
+        // É texto/nome — chama from-search
+        const res = await fetch(`${API}/products/from-search`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ query: mlUrl.trim() }),
+        });
+        const text = await res.text();
+        let data: any;
+        try { data = JSON.parse(text); } catch {
+          throw new Error("Servidor indisponível. Tente novamente em instantes.");
+        }
+        if (!res.ok) throw new Error(data.error || "Produto não encontrado");
+        const prods = data.products || [];
+        if (!prods.length) throw new Error("Nenhum produto encontrado. Tente um link direto do produto.");
+        setUrlProduct(prods[0]);
+        setSelected(prods[0]);
       }
-      if (!res.ok) throw new Error(data.error || "Erro ao buscar produto");
-      setUrlProduct(data.product);
-      setSelected(data.product);
     } catch (e: any) {
       setUrlError(e.message);
     } finally {
@@ -340,12 +363,12 @@ export default function NovoVideo() {
       {mode === "link" && (
         <div className="space-y-4">
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-            <p className="text-gray-300 font-medium mb-1">Cole o link do produto</p>
-            <p className="text-gray-500 text-sm mb-4">Funciona com qualquer site — Mercado Livre, Shopee, Amazon, Shein, Magalu, AliExpress e outros.</p>
+            <p className="text-gray-300 font-medium mb-1">Cole o link ou digite o nome do produto</p>
+            <p className="text-gray-500 text-sm mb-4">Link de qualquer site (ML, Shopee, Amazon, Shein, Magalu...) ou simplesmente o nome do produto.</p>
             <div className="flex gap-3">
               <input
                 className="input flex-1"
-                placeholder="https://www.amazon.com.br/produto ou shopee.com.br/..."
+                placeholder="https://... ou ex: Carregador Turbo 65W USB-C"
                 value={mlUrl}
                 onChange={e => setMlUrl(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && buscarPorLink()}
