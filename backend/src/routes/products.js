@@ -42,19 +42,12 @@ async function geminiAnalyzeImage(imageBase64OrUrl, mimeType = "image/jpeg") {
     contents: [{
       parts: [
         part,
-        { text: `Analise esta imagem de produto e retorne APENAS JSON válido:
-{
-  "title": "nome completo do produto em português",
-  "price": 0,
-  "brand": "marca se visível",
-  "category": "categoria do produto",
-  "keywords": "3-5 palavras-chave para buscar imagens de stock relacionadas em inglês",
-  "description": "descrição curta de 1 linha"
-}
-Se não conseguir identificar preço, use 0. Responda APENAS o JSON, sem texto extra.` }
+        { text: `You are a product identification API. Analyze this product image and respond ONLY with valid JSON, no markdown, no explanation:
+{"title":"product name in Portuguese","price":0,"brand":"brand name or empty","category":"product category","keywords":"3 English keywords for stock images","description":"one line description"}
+If price is not visible use 0. Respond ONLY the JSON object.` }
       ]
     }],
-    generationConfig: { temperature: 0.1, maxOutputTokens: 300 }
+    generationConfig: { temperature: 0, maxOutputTokens: 400, responseMimeType: "application/json" }
   };
 
   for (const model of GEMINI_MODELS) {
@@ -62,15 +55,18 @@ Se não conseguir identificar preço, use 0. Responda APENAS o JSON, sem texto e
       const { data } = await axios.post(
         `${GEMINI_BASE}/${model}:generateContent?key=${key}`,
         body,
-        { headers: { "Content-Type": "application/json" }, timeout: 20000 }
+        { headers: { "Content-Type": "application/json" }, timeout: 25000 }
       );
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!text) continue;
+      // Remove markdown se vier envolto
+      const clean = text.replace(/^```json?\s*/i, "").replace(/```\s*$/i, "").trim();
+      const jsonMatch = clean.match(/\{[\s\S]*\}/);
       if (!jsonMatch) continue;
-      return JSON.parse(jsonMatch[0]);
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.title) return parsed;
     } catch (e) {
-      if (e.response?.status !== 429) return null;
-      // 429 = quota esgotada, tenta próximo modelo
+      if (e.response?.status !== 429) break;
     }
   }
   return null;
