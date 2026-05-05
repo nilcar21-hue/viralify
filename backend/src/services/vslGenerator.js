@@ -1,4 +1,5 @@
 const { spawnSync } = require("child_process");
+const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
 
@@ -67,14 +68,11 @@ async function fetchPexelsImage(keyword, index) {
 
   try {
     const query = encodeURIComponent(keyword);
-    const res = await fetch(
+    const { data } = await axios.get(
       `https://api.pexels.com/v1/search?query=${query}&per_page=5&orientation=landscape`,
-      { headers: { Authorization: PEXELS_KEY } }
+      { headers: { Authorization: PEXELS_KEY }, timeout: 10000 }
     );
-    if (!res.ok) throw new Error(`Pexels ${res.status}`);
-    const data = await res.json();
     if (data.photos && data.photos.length > 0) {
-      // Alterna entre as fotos disponíveis para variedade
       const photo = data.photos[index % data.photos.length];
       const url = photo.src.original || photo.src.large2x;
       imageCache[cacheKey] = url;
@@ -98,36 +96,33 @@ async function downloadImage(url, destPath) {
     ? `${url}?auto=compress&cs=tinysrgb&w=1920&h=1080&fit=crop`
     : url;
 
-  const res = await fetch(finalUrl, {
+  const resp = await axios.get(finalUrl, {
+    responseType: "arraybuffer",
     headers: { "User-Agent": "Mozilla/5.0 (compatible; Viralify/1.0)" },
+    timeout: 20000,
   });
-  if (!res.ok) throw new Error(`Imagem falhou: ${url} — ${res.status}`);
-  const buf = await res.arrayBuffer();
-  fs.writeFileSync(destPath, Buffer.from(buf));
+  if (!resp.data || resp.data.byteLength < 100) throw new Error(`Imagem vazia: ${url}`);
+  fs.writeFileSync(destPath, Buffer.from(resp.data));
 }
 
 async function generateAudio(text, outputPath) {
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
-    method: "POST",
-    headers: {
-      "xi-api-key": ELEVENLABS_KEY,
-      "Content-Type": "application/json",
-      "Accept": "audio/mpeg",
-    },
-    body: JSON.stringify({
+  const resp = await axios.post(
+    `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`,
+    {
       text,
       model_id: "eleven_turbo_v2_5",
       language_code: "pt",
       voice_settings: { stability: 0.35, similarity_boost: 0.75, style: 0.4, use_speaker_boost: true },
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.text().catch(() => "");
-    throw new Error(`ElevenLabs erro ${res.status}: ${err.slice(0, 200)}`);
-  }
-  const buf = await res.arrayBuffer();
-  if (buf.byteLength < 1000) throw new Error("Áudio muito pequeno — ElevenLabs falhou");
-  fs.writeFileSync(outputPath, Buffer.from(buf));
+    },
+    {
+      headers: { "xi-api-key": ELEVENLABS_KEY, "Content-Type": "application/json", "Accept": "audio/mpeg" },
+      responseType: "arraybuffer",
+      timeout: 30000,
+    }
+  );
+  const buf = Buffer.from(resp.data);
+  if (buf.length < 1000) throw new Error("Áudio muito pequeno — ElevenLabs falhou");
+  fs.writeFileSync(outputPath, buf);
 }
 
 function getAudioDuration(audPath, fallback = 4) {

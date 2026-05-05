@@ -14,21 +14,22 @@ const prisma = new PrismaClient();
 
 // ── Gemini: analisa imagem (base64 ou URL) e identifica produto ──
 async function geminiAnalyzeImage(imageBase64OrUrl, mimeType = "image/jpeg") {
-  const key = GEMINI_KEY || process.env.GEMINI_API_KEY;
+  const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
 
   let part;
   if (imageBase64OrUrl.startsWith("http")) {
-    // Baixa a imagem e converte para base64
     try {
-      const res = await fetch(imageBase64OrUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
-      const buf = await res.arrayBuffer();
-      const b64 = Buffer.from(buf).toString("base64");
-      const ct = res.headers.get("content-type") || mimeType;
-      part = { inlineData: { mimeType: ct.split(";")[0], data: b64 } };
+      const imgRes = await axios.get(imageBase64OrUrl, {
+        responseType: "arraybuffer",
+        headers: { "User-Agent": "Mozilla/5.0" },
+        timeout: 10000,
+      });
+      const b64 = Buffer.from(imgRes.data).toString("base64");
+      const ct = (imgRes.headers["content-type"] || mimeType).split(";")[0];
+      part = { inlineData: { mimeType: ct, data: b64 } };
     } catch { return null; }
   } else {
-    // Já é base64 (data:image/jpeg;base64,...)
     const match = imageBase64OrUrl.match(/^data:([^;]+);base64,(.+)$/);
     if (match) {
       part = { inlineData: { mimeType: match[1], data: match[2] } };
@@ -57,12 +58,11 @@ Se não conseguir identificar preço, use 0. Responda APENAS o JSON, sem texto e
   };
 
   try {
-    const res = await fetch(`${GEMINI_URL}${key}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
+    const { data } = await axios.post(
+      `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=${key}`,
+      body,
+      { headers: { "Content-Type": "application/json" }, timeout: 20000 }
+    );
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
@@ -72,7 +72,7 @@ Se não conseguir identificar preço, use 0. Responda APENAS o JSON, sem texto e
 
 // ── Gemini: extrai dados de produto de HTML ou texto ──
 async function geminiExtractFromText(text) {
-  const key = GEMINI_KEY || process.env.GEMINI_API_KEY;
+  const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
 
   const snippet = text.slice(0, 4000);
@@ -93,12 +93,11 @@ Texto: ${snippet}` }]
   };
 
   try {
-    const res = await fetch(`${GEMINI_URL}${key}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
+    const { data } = await axios.post(
+      `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=${key}`,
+      body,
+      { headers: { "Content-Type": "application/json" }, timeout: 20000 }
+    );
     const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
@@ -343,11 +342,10 @@ async function buscarImagemPexels(query) {
   const PEXELS_KEY = process.env.PEXELS_API_KEY;
   if (!PEXELS_KEY) return "";
   try {
-    const res = await fetch(
+    const { data } = await axios.get(
       `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=3&orientation=square`,
-      { headers: { Authorization: PEXELS_KEY } }
+      { headers: { Authorization: PEXELS_KEY }, timeout: 8000 }
     );
-    const data = await res.json();
     return data.photos?.[0]?.src?.medium || "";
   } catch { return ""; }
 }
@@ -378,16 +376,16 @@ router.post("/from-url", authMiddleware, async (req, res) => {
   // TENTATIVA 2: Gemini lê o HTML bruto da página (mesmo bloqueado parcialmente)
   if (!title || title.length < 5) {
     try {
-      const res = await fetch(url, {
+      const htmlRes = await axios.get(url, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
           "Accept": "text/html",
           "Accept-Language": "pt-BR,pt;q=0.9",
         },
-        redirect: "follow",
+        timeout: 15000,
+        maxRedirects: 5,
       });
-      const html = await res.text();
-      const extracted = await geminiExtractFromText(html);
+      const extracted = await geminiExtractFromText(htmlRes.data);
       if (extracted?.title) {
         title = extracted.title;
         price = extracted.price || 0;

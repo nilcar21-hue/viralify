@@ -1,4 +1,5 @@
 const Groq = require("groq-sdk");
+const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
@@ -50,10 +51,10 @@ Responda APENAS os termos, sem explicação.`,
 async function buscarVideoPexels(query) {
   if (!PEXELS_KEY) return null;
   try {
-    const url = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&orientation=portrait&size=medium&per_page=8`;
-    const res = await fetch(url, { headers: { Authorization: PEXELS_KEY } });
-    if (!res.ok) return null;
-    const data = await res.json();
+    const { data } = await axios.get(
+      `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&orientation=portrait&size=medium&per_page=8`,
+      { headers: { Authorization: PEXELS_KEY }, timeout: 10000 }
+    );
     const videos = data.videos || [];
     for (const v of videos) {
       const file = v.video_files?.find(f => f.quality === "hd" || f.quality === "sd");
@@ -66,10 +67,10 @@ async function buscarVideoPexels(query) {
 async function buscarVideoPixabay(query) {
   if (!PIXABAY_KEY) return null;
   try {
-    const url = `https://pixabay.com/api/videos/?key=${PIXABAY_KEY}&q=${encodeURIComponent(query)}&video_type=film&per_page=5`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const data = await res.json();
+    const { data } = await axios.get(
+      `https://pixabay.com/api/videos/?key=${PIXABAY_KEY}&q=${encodeURIComponent(query)}&video_type=film&per_page=5`,
+      { timeout: 10000 }
+    );
     const hits = data.hits || [];
     if (!hits.length) return null;
     return hits[0].videos?.medium?.url || hits[0].videos?.small?.url || null;
@@ -78,14 +79,15 @@ async function buscarVideoPixabay(query) {
 
 async function baixarArquivo(url, destPath) {
   try {
-    const res = await fetch(url, {
+    const resp = await axios.get(url, {
+      responseType: "arraybuffer",
       headers: { "User-Agent": "Mozilla/5.0 (compatible; Viralify/1.0)" },
-      redirect: "follow",
+      timeout: 30000,
+      maxRedirects: 5,
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const buf = await res.arrayBuffer();
-    if (buf.byteLength < 5000) throw new Error("arquivo muito pequeno");
-    fs.writeFileSync(destPath, Buffer.from(buf));
+    const buf = Buffer.from(resp.data);
+    if (buf.length < 5000) throw new Error("arquivo muito pequeno");
+    fs.writeFileSync(destPath, buf);
     return true;
   } catch (e) {
     console.error("baixarArquivo falhou:", e.message);
@@ -164,26 +166,24 @@ async function gerarAudio(texto, outputPath) {
   const elevenKey = process.env.ELEVENLABS_API_KEY;
   if (elevenKey) {
     try {
-      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
-        method: "POST",
-        headers: {
-          "xi-api-key": elevenKey,
-          "Content-Type": "application/json",
-          "Accept": "audio/mpeg",
-        },
-        body: JSON.stringify({
+      const resp = await axios.post(
+        `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`,
+        {
           text: textoLimpo,
           model_id: "eleven_turbo_v2_5",
           language_code: "pt",
           voice_settings: { stability: 0.4, similarity_boost: 0.85, style: 0.35, use_speaker_boost: true },
-        }),
-      });
-      if (res.ok) {
-        const buf = await res.arrayBuffer();
-        if (buf.byteLength > 1000) {
-          fs.writeFileSync(outputPath, Buffer.from(buf));
-          return outputPath;
+        },
+        {
+          headers: { "xi-api-key": elevenKey, "Content-Type": "application/json", "Accept": "audio/mpeg" },
+          responseType: "arraybuffer",
+          timeout: 30000,
         }
+      );
+      const buf = Buffer.from(resp.data);
+      if (buf.length > 1000) {
+        fs.writeFileSync(outputPath, buf);
+        return outputPath;
       }
     } catch (e) { console.error("ElevenLabs:", e.message); }
   }
