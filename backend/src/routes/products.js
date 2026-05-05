@@ -47,7 +47,7 @@ async function geminiAnalyzeImage(imageBase64OrUrl, mimeType = "image/jpeg") {
 If price is not visible use 0. Respond ONLY the JSON object.` }
       ]
     }],
-    generationConfig: { temperature: 0, maxOutputTokens: 400, responseMimeType: "application/json" }
+    generationConfig: { temperature: 0, maxOutputTokens: 400 }
   };
 
   for (const model of GEMINI_MODELS) {
@@ -58,14 +58,15 @@ If price is not visible use 0. Respond ONLY the JSON object.` }
         { headers: { "Content-Type": "application/json" }, timeout: 25000 }
       );
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      console.log(`[Gemini ${model}] resposta: ${text.slice(0, 200)}`);
       if (!text) continue;
-      // Remove markdown se vier envolto
       const clean = text.replace(/^```json?\s*/i, "").replace(/```\s*$/i, "").trim();
       const jsonMatch = clean.match(/\{[\s\S]*\}/);
       if (!jsonMatch) continue;
       const parsed = JSON.parse(jsonMatch[0]);
       if (parsed.title) return parsed;
     } catch (e) {
+      console.log(`[Gemini ${model}] erro: ${e.response?.status} ${e.message?.slice(0, 100)}`);
       if (e.response?.status !== 429) break;
     }
   }
