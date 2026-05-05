@@ -353,17 +353,56 @@ async function scrapeProduct(url) {
 function slugToKeywords(url) {
   try {
     const u = new URL(url);
-    // Pega o pathname e remove IDs, filtros e parâmetros
     const slug = u.pathname
       .split("/")
       .filter(s => s && !s.match(/^(p|MLB|MLA|MLB\d+|MLM)$/i) && s.length > 2)
       .join(" ")
       .replace(/[-_]/g, " ")
-      .replace(/\d{6,}/g, "") // remove números longos (IDs)
+      .replace(/\d{6,}/g, "")
       .replace(/\s+/g, " ")
       .trim();
     return slug.slice(0, 120);
   } catch { return ""; }
+}
+
+// Detecta e extrai dados de URL do Mercado Livre usando o slug (sem scraping)
+async function extrairDadosML(url) {
+  try {
+    // Detecta padrão ML: produto.mercadolivre.com.br/MLB-XXXXXXX-slug-do-produto
+    const mlMatch = url.match(/(?:produto\.mercadolivre\.com\.br|mercadolivre\.com\.br\/p)\/([A-Z]{2,3}-?\d+)-(.+?)(?:\?|$)/i);
+    if (!mlMatch) return null;
+
+    const mlItemId = mlMatch[1].replace("-", ""); // MLB1585041285
+    const rawSlug = mlMatch[2];
+
+    // Converte slug para título legível
+    const titleRaw = rawSlug
+      .replace(/-/g, " ")
+      .replace(/\b(kit|com|para|de|do|da|dos|das|e|em|por|no|na)\b/gi, m => m)
+      .trim();
+
+    // Capitaliza cada palavra
+    const titleFormatted = titleRaw.replace(/\b\w/g, c => c.toUpperCase());
+
+    // Busca preço via API pública do ML (tenta sem auth)
+    let price = 0;
+    let thumbnail = "";
+    try {
+      const { data } = await axios.get(`https://api.mercadolibre.com/items/${mlItemId}`, {
+        headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" },
+        timeout: 8000,
+      });
+      price = data.price || 0;
+      thumbnail = data.thumbnail?.replace("I.jpg", "O.jpg") || "";
+    } catch {}
+
+    // Busca imagem no Pexels se ML bloqueou
+    if (!thumbnail) {
+      thumbnail = await buscarImagemPexels(titleFormatted.split(" ").slice(0, 4).join(" "));
+    }
+
+    return { title: titleFormatted, price, thumbnail, mlItemId };
+  } catch { return null; }
 }
 
 // Busca imagem do produto no Pexels por keyword
@@ -386,20 +425,35 @@ router.post("/from-url", authMiddleware, async (req, res) => {
 
   const mlId = "URL_" + Buffer.from(url).toString("base64").slice(0, 24).replace(/[^a-zA-Z0-9]/g, "");
 
-  // Já existe no cache?
+  // Já existe no cache? Só usa se o título for válido (não genérico como "Amazon.com.br")
   const existing = await prisma.product.findUnique({ where: { mlId } }).catch(() => null);
-  if (existing) return res.json({ product: existing, cached: true });
+  const tituloValido = (t) => t && t.length > 5 && !/(amazon\.com|mercadolivre\.com|shopee|shein|magalu)/i.test(t);
+  if (existing && tituloValido(existing.title)) return res.json({ product: existing, cached: true });
 
   let title = "", price = 0, thumbnail = "";
 
-  // TENTATIVA 1: Scraping HTTP direto
-  try {
-    const result = await scrapeProduct(url);
-    title = result.title;
-    price = result.price;
-    thumbnail = result.thumbnail;
-  } catch (e) {
-    console.log("Scraping falhou:", e.message);
+  // TENTATIVA 0: URL do Mercado Livre — extrai via slug (rápido, sem scraping HTTP)
+  const isML = /mercadolivre\.com\.br/i.test(url);
+  if (isML) {
+    const mlData = await extrairDadosML(url);
+    if (mlData?.title && mlData.title.length > 3) {
+      title = mlData.title;
+      price = mlData.price || 0;
+      thumbnail = mlData.thumbnail || "";
+      console.log(`[ML slug] ${title} | R$ ${price}`);
+    }
+  }
+
+  // TENTATIVA 1: Scraping HTTP direto (para outros sites)
+  if (!title || title.length < 5) {
+    try {
+      const result = await scrapeProduct(url);
+      title = result.title;
+      price = result.price;
+      thumbnail = result.thumbnail;
+    } catch (e) {
+      console.log("Scraping falhou:", e.message);
+    }
   }
 
   // TENTATIVA 2: Gemini lê o HTML bruto da página (mesmo bloqueado parcialmente)
@@ -423,13 +477,18 @@ router.post("/from-url", authMiddleware, async (req, res) => {
     } catch {}
   }
 
-  // TENTATIVA 3: Slug da URL + Gemini como último recurso
+  // TENTATIVA 3: Slug da URL + Groq como último recurso
   if (!title || title.length < 5) {
     const slug = slugToKeywords(url);
     if (slug) {
       try {
-        const extracted = await geminiExtractFromText(`URL slug: ${slug}\nURL completa: ${url}`);
-        if (extracted?.title) { title = extracted.title; price = extracted.price || 0; }
+        const resp = await groq.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: `Extraia o nome completo do produto deste slug de URL: "${slug}". Responda APENAS o nome do produto em português, capitalizado corretamente, sem explicação.` }],
+          max_tokens: 60, temperature: 0,
+        });
+        const extracted = resp.choices[0].message.content.trim();
+        if (extracted && extracted.length > 3) { title = extracted; }
       } catch {}
     }
   }
