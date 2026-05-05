@@ -66,6 +66,18 @@ app.post("/vsl/generate", async (req, res) => {
   generateVSL(outputDir, outputPath).catch(e => console.error("VSL erro:", e.message));
 });
 
+// Admin: atualiza plano do usuário
+app.post("/admin/set-plan", async (req, res) => {
+  const token = req.headers["x-admin-token"];
+  if (token !== "viralify_admin_2025") return res.status(401).json({ error: "Não autorizado" });
+  const { email, plan } = req.body;
+  if (!email || !plan) return res.status(400).json({ error: "email e plan obrigatórios" });
+  const { PrismaClient } = require("@prisma/client");
+  const p = new PrismaClient();
+  const user = await p.user.update({ where: { email }, data: { plan } });
+  res.json({ ok: true, user: { id: user.id, email: user.email, plan: user.plan } });
+});
+
 // Admin: reseta produtos do banco para forçar novo fallback com imagens corretas
 app.post("/admin/reset-products", async (req, res) => {
   const token = req.headers["x-admin-token"];
