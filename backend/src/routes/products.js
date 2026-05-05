@@ -453,7 +453,7 @@ router.post("/from-search", authMiddleware, async (req, res) => {
       { timeout: 10000, headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" } }
     );
 
-    const products = (data.results || []).map((item: any) => ({
+    const products = (data.results || []).map((item) => ({
       mlId: item.id,
       title: item.title,
       price: item.price,
@@ -473,7 +473,7 @@ router.post("/from-search", authMiddleware, async (req, res) => {
 
     // Busca os ids salvos para retornar com id do banco
     const saved = await prisma.product.findMany({
-      where: { mlId: { in: products.map((p: any) => p.mlId) } },
+      where: { mlId: { in: products.map((p) => p.mlId) } },
     });
 
     res.json({ products: saved, source: "search" });
