@@ -83,8 +83,12 @@ export default function NovoVideo() {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ url: mlUrl }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch {
+        throw new Error("Servidor indisponível. Tente novamente em instantes.");
+      }
+      if (!res.ok) throw new Error(data.error || "Erro ao buscar produto");
       setUrlProduct(data.product);
       setSelected(data.product);
     } catch (e: any) {
@@ -245,12 +249,12 @@ export default function NovoVideo() {
       <div className="flex gap-2 mb-6 bg-gray-900 p-1 rounded-xl border border-gray-800">
         {([
           { key: "catalogo", label: "Catálogo", icon: Search },
-          { key: "link", label: "Colar Link ML", icon: Link2 },
+          { key: "link", label: "Colar Link", icon: Link2 },
           { key: "custom", label: "Produto próprio", icon: ImagePlus },
         ] as { key: Mode; label: string; icon: any }[]).map(({ key, label, icon: Icon }) => (
           <button
             key={key}
-            onClick={() => { setMode(key); setSelected(null); setUrlProduct(null); }}
+            onClick={() => { setMode(key); setSelected(null); setUrlProduct(null); setError(""); setUrlError(""); }}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${
               mode === key
                 ? "bg-purple-600 text-white"
