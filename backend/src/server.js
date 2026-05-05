@@ -79,6 +79,8 @@ app.post("/admin/reset-products", async (req, res) => {
 app.get("/debug/env", (_, res) => res.json({
   ELEVENLABS: process.env.ELEVENLABS_API_KEY?.slice(0, 15) || "NAO_DEFINIDA",
   GROQ: process.env.GROQ_API_KEY?.slice(0, 10) || "NAO_DEFINIDA",
+  GEMINI: process.env.GEMINI_API_KEY?.slice(0, 10) || "NAO_DEFINIDA",
+  PEXELS: process.env.PEXELS_API_KEY?.slice(0, 10) || "NAO_DEFINIDA",
   NODE_ENV: process.env.NODE_ENV,
 }));
 
