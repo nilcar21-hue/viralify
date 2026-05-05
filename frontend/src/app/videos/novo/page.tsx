@@ -43,8 +43,11 @@ export default function NovoVideo() {
     const token = localStorage.getItem("token");
     if (!token) { router.push("/login"); return; }
     fetch(`${API}/products/trending`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => { setProducts(d.products || []); setLoadingProducts(false); })
+      .then(r => r.text())
+      .then(text => {
+        try { const d = JSON.parse(text); setProducts(d.products || []); } catch {}
+        setLoadingProducts(false);
+      })
       .catch(() => setLoadingProducts(false));
   }, []);
 
@@ -185,8 +188,10 @@ export default function NovoVideo() {
         thumbnailUrl: customThumb,
       }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
+    const text = await res.text();
+    let data: any;
+    try { data = JSON.parse(text); } catch { throw new Error("Servidor indisponível. Tente novamente."); }
+    if (!res.ok) throw new Error(data.error || "Erro ao criar produto");
     return data.product;
   }
 
@@ -214,7 +219,9 @@ export default function NovoVideo() {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ productId: produto.id }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { throw new Error("Servidor indisponível. Aguarde e tente novamente."); }
       if (!res.ok) throw new Error(data.error);
       setVideoId(data.videoId);
 
