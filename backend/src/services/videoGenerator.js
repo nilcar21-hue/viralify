@@ -326,6 +326,10 @@ async function gerarVideo(roteiro, audioPath, produto, outputPath) {
     ];
   }
 
+  console.log(`  FFmpeg: ${clipPaths.length} clips, audio=${audioPath}, output=${outputPath}`);
+  console.log(`  FFmpeg cmd: ${FFMPEG} ${ffmpegArgs.slice(0, 8).join(" ")} ...`);
+  console.log(`  Audio existe: ${fs.existsSync(audioPath)}, tamanho: ${fs.existsSync(audioPath) ? fs.statSync(audioPath).size : 0}`);
+
   const r = spawnSync(FFMPEG, ffmpegArgs, {
     encoding: "utf8", maxBuffer: 100 * 1024 * 1024, timeout: 300000,
   });
@@ -334,9 +338,12 @@ async function gerarVideo(roteiro, audioPath, produto, outputPath) {
   clipPaths.forEach(c => { try { fs.unlinkSync(c.path); } catch {} });
   if (productImgPath) { try { fs.unlinkSync(productImgPath); } catch {} }
 
-  if (r.status !== 0) {
-    console.error("FFmpeg stderr:", (r.stderr || "").slice(-800));
-    // Fallback mínimo
+  console.log(`  FFmpeg status: ${r.status}, error: ${r.error?.message || "none"}`);
+  if (r.stderr) console.error("FFmpeg stderr (últimas 1000):", r.stderr.slice(-1000));
+
+  if (r.status !== 0 || r.error) {
+    // Fallback mínimo sem overlays complexos
+    console.log("  Tentando fallback FFmpeg simples...");
     const fb = spawnSync(FFMPEG, [
       "-y", "-f", "lavfi", "-i", "color=c=0x1a0a2e:s=1080x1920:r=25",
       "-i", audioPath,
@@ -344,7 +351,11 @@ async function gerarVideo(roteiro, audioPath, produto, outputPath) {
       "-c:a", "aac", "-b:a", "96k",
       "-shortest", "-movflags", "+faststart", outputPath,
     ], { encoding: "utf8", maxBuffer: 30 * 1024 * 1024, timeout: 120000 });
-    if (fb.status !== 0) throw new Error("FFmpeg falhou: " + (fb.stderr || "").slice(-400));
+    console.log(`  Fallback status: ${fb.status}, error: ${fb.error?.message || "none"}`);
+    if (fb.stderr) console.error("Fallback stderr:", fb.stderr.slice(-500));
+    if (fb.status !== 0 || fb.error) {
+      throw new Error(`FFmpeg falhou: status=${r.status} error=${r.error?.message || r.stderr?.slice(-200) || "desconhecido"}`);
+    }
   }
 
   return outputPath;
