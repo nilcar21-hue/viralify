@@ -116,6 +116,26 @@ Texto: ${snippet}` }]
   return null;
 }
 
+// ── GET /products/gemini-test — testa Gemini sem imagem ──
+router.get("/gemini-test", async (req, res) => {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return res.json({ error: "GEMINI_API_KEY não definida" });
+  const results = {};
+  for (const model of GEMINI_MODELS) {
+    try {
+      const { data } = await axios.post(
+        `${GEMINI_BASE}/${model}:generateContent?key=${key}`,
+        { contents: [{ parts: [{ text: "Say: OK" }] }], generationConfig: { maxOutputTokens: 5 } },
+        { headers: { "Content-Type": "application/json" }, timeout: 10000 }
+      );
+      results[model] = data.candidates?.[0]?.content?.parts?.[0]?.text || "no text";
+    } catch (e) {
+      results[model] = `ERR ${e.response?.status}: ${e.response?.data?.error?.message?.slice(0, 100) || e.message}`;
+    }
+  }
+  res.json(results);
+});
+
 // ── POST /products/analyze-image — identifica produto por imagem ──
 router.post("/analyze-image", authMiddleware, async (req, res) => {
   const { imageBase64, imageUrl } = req.body;
