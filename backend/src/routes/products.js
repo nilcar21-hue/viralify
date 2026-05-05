@@ -47,7 +47,7 @@ async function geminiAnalyzeImage(imageBase64OrUrl, mimeType = "image/jpeg") {
 If price is not visible use 0. Respond ONLY the JSON object.` }
       ]
     }],
-    generationConfig: { temperature: 0, maxOutputTokens: 400 }
+    generationConfig: { temperature: 0, maxOutputTokens: 1024 }
   };
 
   for (const model of GEMINI_MODELS) {
