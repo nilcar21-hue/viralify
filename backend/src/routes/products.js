@@ -7,8 +7,8 @@ const Groq = require("groq-sdk");
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = "gemini-2.0-flash";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent?key=`;
+const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"];
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1/models";
 
 const prisma = new PrismaClient();
 
@@ -57,17 +57,23 @@ Se não conseguir identificar preço, use 0. Responda APENAS o JSON, sem texto e
     generationConfig: { temperature: 0.1, maxOutputTokens: 300 }
   };
 
-  try {
-    const { data } = await axios.post(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=${key}`,
-      body,
-      { headers: { "Content-Type": "application/json" }, timeout: 20000 }
-    );
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    return JSON.parse(jsonMatch[0]);
-  } catch { return null; }
+  for (const model of GEMINI_MODELS) {
+    try {
+      const { data } = await axios.post(
+        `${GEMINI_BASE}/${model}:generateContent?key=${key}`,
+        body,
+        { headers: { "Content-Type": "application/json" }, timeout: 20000 }
+      );
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) continue;
+      return JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      if (e.response?.status !== 429) return null;
+      // 429 = quota esgotada, tenta próximo modelo
+    }
+  }
+  return null;
 }
 
 // ── Gemini: extrai dados de produto de HTML ou texto ──
@@ -92,16 +98,22 @@ Texto: ${snippet}` }]
     generationConfig: { temperature: 0, maxOutputTokens: 200 }
   };
 
-  try {
-    const { data } = await axios.post(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=${key}`,
-      body,
-      { headers: { "Content-Type": "application/json" }, timeout: 20000 }
-    );
-    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-  } catch { return null; }
+  for (const model of GEMINI_MODELS) {
+    try {
+      const { data } = await axios.post(
+        `${GEMINI_BASE}/${model}:generateContent?key=${key}`,
+        body,
+        { headers: { "Content-Type": "application/json" }, timeout: 20000 }
+      );
+      const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) continue;
+      return JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      if (e.response?.status !== 429) return null;
+    }
+  }
+  return null;
 }
 
 // ── POST /products/analyze-image — identifica produto por imagem ──
