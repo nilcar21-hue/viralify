@@ -62,6 +62,9 @@ export default function VideoDetail() {
     ? (video.videoUrl.startsWith("http") ? video.videoUrl : `${API}${video.videoUrl}`)
     : null;
 
+  // URL local (/uploads/...) só funciona enquanto o servidor não reinicia
+  const videoDisponivel = videoUrl && video.videoUrl?.startsWith("http");
+
   return (
     <div className="min-h-screen p-6 max-w-3xl mx-auto">
       <Link href="/videos" className="flex items-center gap-2 text-gray-400 hover:text-white mb-8 transition-colors">
@@ -75,17 +78,26 @@ export default function VideoDetail() {
 
       {/* Player */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden mb-6">
-        {videoUrl ? (
-          <video src={videoUrl} controls className="w-full aspect-video" />
+        {videoDisponivel ? (
+          <video src={videoUrl!} controls className="w-full aspect-video" preload="metadata" />
         ) : (
-          <div className="w-full aspect-video flex items-center justify-center bg-gray-900">
+          <div className="w-full aspect-video flex flex-col items-center justify-center bg-gray-900 gap-3">
             {video.status === "GENERATING" ? (
-              <div className="text-center">
-                <Loader size={40} className="text-purple-400 animate-spin mx-auto mb-3" />
-                <p className="text-gray-400">Gerando vídeo... aguarde</p>
-              </div>
+              <>
+                <Loader size={40} className="text-purple-400 animate-spin" />
+                <p className="text-gray-400">Gerando vídeo... aguarde ~60s</p>
+              </>
+            ) : video.status === "READY" ? (
+              <>
+                <XCircle size={36} className="text-yellow-500" />
+                <p className="text-gray-400 text-sm text-center px-4">Vídeo expirou do servidor temporário.<br/>Gere novamente para obter um link permanente.</p>
+                <Link href="/videos/novo" className="btn-primary text-sm">Gerar novo vídeo</Link>
+              </>
             ) : (
-              <p className="text-gray-500">Vídeo não disponível</p>
+              <>
+                <XCircle size={36} className="text-red-500" />
+                <p className="text-gray-500">Vídeo não disponível</p>
+              </>
             )}
           </div>
         )}

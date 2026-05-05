@@ -4,6 +4,27 @@ const { authMiddleware } = require("../middleware/auth");
 const { gerarRoteiro, gerarAudio, gerarVideo } = require("../services/videoGenerator");
 const path = require("path");
 const fs = require("fs");
+const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+
+const R2 = new S3Client({
+  region: "auto",
+  endpoint: `https://3f7561e4e4076c1b8f9f1832cfb6fce6.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID || "e4c9f867c959b4fc11f59634c630d84c",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || "040e9f090233d90ee627dd8bf687733a8371942f21886eb64c9a0ae938ee3d00",
+  },
+});
+
+async function uploadToR2(localPath, key) {
+  const body = fs.readFileSync(localPath);
+  await R2.send(new PutObjectCommand({
+    Bucket: "viralify-videos",
+    Key: key,
+    Body: body,
+    ContentType: key.endsWith(".mp4") ? "video/mp4" : "audio/mpeg",
+  }));
+  return `https://pub-4eac1fa6c1f14af5bd5fa78fe9840057.r2.dev/${key}`;
+}
 
 const prisma = new PrismaClient();
 
@@ -83,14 +104,24 @@ router.post("/generate", authMiddleware, async (req, res) => {
       const videoPath = `${base}.mp4`;
       await gerarVideo(roteiro, audioPath, product, videoPath);
 
-      // 4. Atualiza banco
+      // 4. Upload para Cloudflare R2 (armazenamento permanente)
+      let videoUrl = `/uploads/${video.id}.mp4`;
+      let audioUrl = `/uploads/${video.id}.mp3`;
+      try {
+        videoUrl = await uploadToR2(videoPath, `videos/${video.id}.mp4`);
+        audioUrl = await uploadToR2(audioPath, `audios/${video.id}.mp3`);
+        console.log(`R2 upload OK: ${videoUrl}`);
+        // Remove arquivos locais para liberar espaço
+        fs.unlink(videoPath, () => {});
+        fs.unlink(audioPath, () => {});
+      } catch (e) {
+        console.error("R2 upload falhou, usando URL local:", e.message);
+      }
+
+      // 5. Atualiza banco
       await prisma.video.update({
         where: { id: video.id },
-        data: {
-          status: "READY",
-          videoUrl: `/uploads/${video.id}.mp4`,
-          audioUrl: `/uploads/${video.id}.mp3`,
-        },
+        data: { status: "READY", videoUrl, audioUrl },
       });
 
       await prisma.user.update({
