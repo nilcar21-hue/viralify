@@ -136,9 +136,9 @@ export default function Login() {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium text-gray-300">Senha</label>
-                <a href="#" className="text-xs text-purple-400 hover:text-purple-300 transition-colors">
+                <Link href="/esqueceu-senha" className="text-xs text-purple-400 hover:text-purple-300 transition-colors">
                   Esqueceu a senha?
-                </a>
+                </Link>
               </div>
               <div className="relative">
                 <input

@@ -31,8 +31,10 @@ model User {
   mlToken       String?
   ytToken       String?
   ttToken       String?
-  videosCount   Int           @default(0)
-  createdAt     DateTime      @default(now())
+  videosCount        Int           @default(0)
+  resetToken         String?
+  resetTokenExpiresAt DateTime?
+  createdAt          DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   videos        Video[]
   metrics       Metric[]

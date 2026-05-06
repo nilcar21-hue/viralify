@@ -1,8 +1,10 @@
 const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const { PrismaClient } = require("@prisma/client");
 const { authMiddleware } = require("../middleware/auth");
+const { enviarResetSenha } = require("../services/emailService");
 
 const prisma = new PrismaClient();
 
@@ -50,6 +52,61 @@ router.post("/login", async (req, res) => {
     res.json({ user: safeUser, token });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /auth/forgot-password
+router.post("/forgot-password", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "Email obrigatório" });
+
+  try {
+    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+    // sempre retorna 200 para não revelar se email existe
+    if (!user) return res.json({ ok: true });
+
+    const token = crypto.randomBytes(32).toString("hex");
+    const expires = new Date(Date.now() + 60 * 60 * 1000); // 1h
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { resetToken: token, resetTokenExpiresAt: expires },
+    });
+
+    await enviarResetSenha({ email: user.email, name: user.name, resetToken: token });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[forgot-password]", e.message);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+// POST /auth/reset-password
+router.post("/reset-password", async (req, res) => {
+  const { token, password } = req.body;
+  if (!token || !password) return res.status(400).json({ error: "Token e senha obrigatórios" });
+  if (password.length < 6) return res.status(400).json({ error: "Senha muito curta (mínimo 6 caracteres)" });
+
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        resetToken: token,
+        resetTokenExpiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!user) return res.status(400).json({ error: "Link inválido ou expirado" });
+
+    const hashed = await bcrypt.hash(password, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashed, resetToken: null, resetTokenExpiresAt: null },
+    });
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[reset-password]", e.message);
+    res.status(500).json({ error: "Erro interno" });
   }
 });
 

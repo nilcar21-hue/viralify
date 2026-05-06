@@ -1,83 +1,72 @@
 const router = require("express").Router();
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
+const { enviarBoasVindas, enviarPlanoAtualizado } = require("../services/emailService");
+
 const prisma = new PrismaClient();
 
-// POST /webhooks/stripe — pagamentos Stripe
-router.post("/stripe", async (req, res) => {
-  const { type, data } = req.body;
+function gerarSenhaTemporaria() {
+  const palavras = ["Solar", "Luna", "Tiger", "Cyber", "Nova", "Storm", "Flash", "Alpha", "Viper", "Nexo"];
+  const p = palavras[Math.floor(Math.random() * palavras.length)];
+  const n = Math.floor(Math.random() * 900) + 100;
+  return `${p}${n}!`;
+}
 
-  if (type === "checkout.session.completed") {
-    const { customer_email, metadata } = data.object;
-    const { plan } = metadata || {};
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
-    await prisma.user.updateMany({
-      where: { email: customer_email },
-      data: { plan: plan || "PRO", planExpiresAt: expiresAt },
-    });
-  }
-
-  res.json({ received: true });
-});
-
-// POST /webhooks/hotmart — pagamentos Hotmart
+// POST /webhooks/hotmart
 router.post("/hotmart", async (req, res) => {
+  res.json({ received: true });
+
   try {
     const { event, data } = req.body;
+    console.log(`[Hotmart] evento: ${event}`);
 
     if (event === "PURCHASE_COMPLETE" || event === "PURCHASE_APPROVED") {
       const buyer = data?.buyer;
-      const purchase = data?.purchase;
-      if (!buyer?.email) return res.json({ received: true });
+      if (!buyer?.email) return;
 
-      const email = buyer.email.toLowerCase();
+      const email = buyer.email.toLowerCase().trim();
       const name = buyer.name || "Usuário Viralify";
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const offerId = data?.purchase?.offer?.code || "";
+      const plan = offerId.toLowerCase().includes("ultra") ? "ULTRA" : "PRO";
 
-      // Verifica se já existe
       let user = await prisma.user.findUnique({ where: { email } });
 
       if (!user) {
-        // Cria conta automaticamente com senha aleatória
-        const tempPassword = Math.random().toString(36).slice(-8) + "V1@";
+        const tempPassword = gerarSenhaTemporaria();
         const hashed = await bcrypt.hash(tempPassword, 10);
         user = await prisma.user.create({
-          data: {
-            email,
-            name,
-            password: hashed,
-            plan: "PRO",
-            planExpiresAt: expiresAt,
-          },
+          data: { email, name, password: hashed, plan, planExpiresAt: expiresAt },
         });
-        console.log(`Hotmart: conta criada para ${email}`);
+        console.log(`[Hotmart] conta criada: ${email} | plano: ${plan}`);
+        await enviarBoasVindas({ email, name, password: tempPassword, plan });
       } else {
-        // Atualiza plano do usuário existente
         await prisma.user.update({
           where: { email },
-          data: { plan: "PRO", planExpiresAt: expiresAt },
+          data: { plan, planExpiresAt: expiresAt },
         });
-        console.log(`Hotmart: plano atualizado para ${email}`);
+        console.log(`[Hotmart] plano atualizado: ${email} → ${plan}`);
+        await enviarPlanoAtualizado({ email, name: user.name, plan });
       }
     }
 
     if (event === "PURCHASE_REFUNDED" || event === "PURCHASE_CANCELLED") {
-      const email = data?.buyer?.email?.toLowerCase();
+      const email = data?.buyer?.email?.toLowerCase()?.trim();
       if (email) {
         await prisma.user.updateMany({
           where: { email },
           data: { plan: "FREE", planExpiresAt: null },
         });
-        console.log(`Hotmart: plano cancelado para ${email}`);
+        console.log(`[Hotmart] plano cancelado: ${email}`);
       }
     }
-
-    res.json({ received: true });
   } catch (e) {
-    console.error("Hotmart webhook erro:", e.message);
-    res.status(500).json({ error: e.message });
+    console.error("[Hotmart] erro:", e.message);
   }
+});
+
+router.post("/stripe", async (req, res) => {
+  res.json({ received: true });
 });
 
 module.exports = router;
